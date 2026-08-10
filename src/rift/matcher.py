@@ -35,7 +35,7 @@ def _matches(entity: str, as_type: str, text: str) -> bool:
         return entity in text
 
     if as_type == "heading":
-        return bool(re.search(rf'^#{1,6}\s+.*{esc}', text, re.MULTILINE | re.IGNORECASE))
+        return bool(re.search(rf'^#{{1,6}}\s+.*{esc}', text, re.MULTILINE | re.IGNORECASE))
 
     if as_type.startswith("heading"):
         m = re.match(r'heading[_\s]?(\d)', as_type)
