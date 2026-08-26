@@ -222,3 +222,9 @@ def test_find_compiles_regex_multiline_so_caret_anchors_per_line(repo, write):
 def test_multiline_regex_does_not_match_a_rule_inside_a_fence(repo, write):
     write("a/one.md", "prose\n```\n---\n```\n")
     assert find(repo, r"^---$", {"in": "a/*.md", "as": "regex"}) == []
+
+
+def test_check_regex_is_multiline_like_find(repo, write):
+    """One meaning of `^` across a config, in check as well as find."""
+    write("docs/a.md", "prose\n---\nmore\n")
+    assert check(repo, r"^---$", {"in": "docs/*.md", "as": "regex"}) is True

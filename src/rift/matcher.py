@@ -109,7 +109,8 @@ def _matches(entity: str, as_type: str, text: str, case_insensitive: bool = Fals
 
     if as_type == "regex":
         try:
-            return bool(re.search(entity, text, re.IGNORECASE if case_insensitive else 0))
+            flags = re.MULTILINE | (re.IGNORECASE if case_insensitive else 0)
+            return bool(re.search(entity, text, flags))
         except re.error:
             return False
 
