@@ -217,3 +217,18 @@ def test_every_catalogued_metric_is_registered():
 def test_empty_document_yields_zero_not_a_crash():
     for name, fn in measure.METRICS.items():
         assert fn("") == 0.0, name
+
+
+# --- word-count ---
+
+
+def test_word_count_hand_computed():
+    assert measure.word_count("one two three") == 3.0
+
+
+def test_word_count_excludes_masked_regions():
+    assert measure.word_count("one two\n\n```\nthree four five\n```\n") == 2.0
+
+
+def test_word_count_is_registered():
+    assert "word-count" in measure.METRICS

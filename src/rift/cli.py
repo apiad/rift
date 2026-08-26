@@ -1,3 +1,4 @@
+import math
 import sys
 import click
 import yaml
@@ -43,9 +44,43 @@ def _kinds_or_exit(rules: list[dict]) -> list[str]:
 
 
 def _occurrences(root: Path, rule: dict) -> list[tuple[Path, int, str]]:
+    """The sites that violate a forbid rule.
+
+    Plain `forbid` means zero tolerance. Two optional allowances generalise it
+    without turning it into a counting rule — the report is still occurrences:
+
+    - `max_per_file: N` — the first N in each file are allowed; report the rest.
+      "Mark a glossary term only on first use in a chapter."
+    - `max_files: N` — the entity may appear in at most N files; report the
+      occurrences in the excess ones. "Never define a footnote label twice."
+
+    Setting only `max_files` must not silently apply the zero-tolerance default
+    per file, so the per-file cap goes to infinity unless it was asked for.
+    """
+    forbid = rule["forbid"]
+    max_files = forbid.get("max_files")
+    max_per_file = forbid.get("max_per_file")
+    if max_per_file is None:
+        max_per_file = math.inf if max_files is not None else 0
+
     sites = []
     for entity in sorted(extract(root, rule["extract"])):
-        sites.extend(find(root, entity, rule["forbid"]))
+        found = find(root, entity, forbid)
+
+        by_file: dict[Path, list] = {}
+        for site in found:
+            by_file.setdefault(site[0], []).append(site)
+
+        excess_files = set()
+        if max_files is not None and len(by_file) > max_files:
+            excess_files = set(sorted(by_file)[max_files:])
+
+        for path, group in by_file.items():
+            if path in excess_files:
+                sites.extend(group)
+            else:
+                sites.extend(group[max_per_file:] if max_per_file != math.inf else [])
+
     sites.sort(key=lambda s: (str(s[0]), s[1], s[2]))
     return sites
 

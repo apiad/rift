@@ -22,7 +22,8 @@ def check(root: Path, entity: str, require: dict) -> bool:
 
     # A regex entity is a pattern, not a string: lowercasing it would rewrite
     # character classes. It gets the IGNORECASE flag instead.
-    fold = case_insensitive and as_type != "regex"
+    wrap = require.get("wrap")
+    fold = case_insensitive and as_type != "regex" and not wrap
     if fold:
         entity = entity.lower()
 
@@ -33,7 +34,7 @@ def check(root: Path, entity: str, require: dict) -> bool:
             continue
         if fold:
             text = text.lower()
-        if _matches(entity, as_type, text, case_insensitive):
+        if _matches(entity, as_type, text, case_insensitive, wrap):
             return True
 
     return False
@@ -51,7 +52,7 @@ def find(root: Path, entity: str, forbid: dict) -> list[tuple[Path, int, str]]:
     case_insensitive = forbid.get("case_insensitive", False)
     include_quotes = forbid.get("include_quotes", False)
 
-    pattern = _pattern_for(entity, as_type)
+    pattern = _pattern_for(entity, as_type, forbid.get("wrap"))
     if pattern is None:
         return []
     # MULTILINE to match the extractor and pattern counting: a real banned
@@ -74,8 +75,16 @@ def find(root: Path, entity: str, forbid: dict) -> list[tuple[Path, int, str]]:
     return sites
 
 
-def _pattern_for(entity: str, as_type: str) -> str | None:
-    """The regex source for a literal-or-pattern entity, or None if unsupported."""
+def _pattern_for(entity: str, as_type: str, wrap: str | None = None) -> str | None:
+    """The regex source for a literal-or-pattern entity, or None if unsupported.
+
+    `wrap` substitutes the escaped entity into a caller-supplied pattern via
+    `${entity}`. It is what lets a rule ask about a *marked* term rather than a
+    bare word — `[~abstraction]`, not the word "abstraction" — without rift
+    knowing anything about the marker syntax.
+    """
+    if wrap:
+        return wrap.replace("${entity}", re.escape(entity))
     if as_type == "word":
         return rf'\b{re.escape(entity)}\b'
     if as_type == "regex":
@@ -85,8 +94,16 @@ def _pattern_for(entity: str, as_type: str) -> str | None:
     return None
 
 
-def _matches(entity: str, as_type: str, text: str, case_insensitive: bool = False) -> bool:
+def _matches(entity: str, as_type: str, text: str, case_insensitive: bool = False,
+             wrap: str | None = None) -> bool:
     esc = re.escape(entity)
+
+    if wrap:
+        flags = re.MULTILINE | (re.IGNORECASE if case_insensitive else 0)
+        try:
+            return bool(re.search(_pattern_for(entity, as_type, wrap), text, flags))
+        except re.error:
+            return False
 
     if as_type == "mention":
         return entity in text

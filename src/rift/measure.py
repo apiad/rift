@@ -91,6 +91,12 @@ def self_repetition(text: str, n: int = 4) -> float:
 # --- structure ---
 
 
+def word_count(text: str) -> float:
+    """Prose tokens in the document. Masked and stripped like every metric, so a
+    chapter is not credited for its code blocks or its markers."""
+    return float(len(tokens(mask(text))))
+
+
 def mean_paragraph_length(text: str) -> float:
     lengths = _paragraph_lengths(text)
     return mean(lengths) if lengths else 0.0
@@ -216,6 +222,7 @@ def _cv(values: list[int]) -> float:
 
 
 METRICS = {
+    "word-count": word_count,
     "sentence-length-cv": sentence_length_cv,
     "short-sentence-ratio": short_sentence_ratio,
     "sentence-length-autocorr": sentence_length_autocorr,

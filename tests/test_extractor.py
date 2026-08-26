@@ -167,3 +167,16 @@ def test_paths_ignores_directories(repo, write):
     write("a/one.md", "x")
     (repo / "a" / "sub.md").mkdir(parents=True)
     assert extract(repo, {"paths": "a/*"}) == {"a/one.md"}
+
+
+def test_file_accepts_a_list_of_globs(repo, write):
+    write("a/one.md", "KEY_A=1\n")
+    write("b/two.md", "KEY_B=1\n")
+    assert extract(repo, {"file": ["a/*.md", "b/*.md"], "env_names": True}) == {"KEY_A", "KEY_B"}
+
+
+def test_file_as_a_list_works_for_regex_too(repo, write):
+    write("a/one.md", "[~alpha]\n")
+    write("b/two.md", "[~beta]\n")
+    got = extract(repo, {"file": ["a/*.md", "b/*.md"], "regex": r'\[~([a-z]+)\]'})
+    assert got == {"alpha", "beta"}

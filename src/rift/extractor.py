@@ -38,8 +38,9 @@ def extract(root: Path, config: dict) -> set[str]:
                 results.add(match.parent.name)
         return results
 
-    file_pattern = config.get("file", "")
-    matching_files = [f for f in root.glob(file_pattern) if f.is_file()] if file_pattern else []
+    # `file:` takes one glob or a list, like `in:` — a source set is often
+    # several directories and no single glob spells that.
+    matching_files = resolve_globs(root, config.get("file", []))
 
     if "yaml_keys" in config:
         for f in matching_files:

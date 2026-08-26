@@ -228,3 +228,46 @@ def test_check_regex_is_multiline_like_find(repo, write):
     """One meaning of `^` across a config, in check as well as find."""
     write("docs/a.md", "prose\n---\nmore\n")
     assert check(repo, r"^---$", {"in": "docs/*.md", "as": "regex"}) is True
+
+
+# --- wrap: the entity is substituted into a pattern ---
+
+WRAP = {"in": "docs/**/*.md", "wrap": r'[\[{]~${entity}[\]}]'}
+
+
+def test_wrap_matches_the_entity_inside_its_marker(repo, write):
+    write("docs/a.md", "text [~cpu] more\n")
+    assert check(repo, "cpu", WRAP) is True
+
+
+def test_wrap_does_not_match_the_bare_word(repo, write):
+    """The point: `abstraction` in prose must not satisfy the marker `[~abstraction]`."""
+    write("docs/a.md", "a discussion of abstraction in general\n")
+    assert check(repo, "abstraction", WRAP) is False
+
+
+def test_wrap_accepts_either_marker_form(repo, write):
+    write("docs/a.md", "one [~cpu] two\n")
+    write("docs/b.md", "three {~alu} four\n")
+    assert check(repo, "cpu", WRAP) is True
+    assert check(repo, "alu", WRAP) is True
+
+
+def test_wrap_escapes_the_entity(repo, write):
+    """An entity carrying a regex metachar must match literally, not as a pattern.
+    Unescaped, the key `a.c` would match the marker `[~abc]`."""
+    write("docs/a.md", "[~abc]\n")
+    assert check(repo, "a.c", WRAP) is False
+    write("docs/b.md", "[~a.c]\n")
+    assert check(repo, "a.c", WRAP) is True
+
+
+def test_wrap_does_not_match_a_longer_key(repo, write):
+    write("docs/a.md", "[~cpu-cache]\n")
+    assert check(repo, "cpu", WRAP) is False
+
+
+def test_wrap_works_in_find_and_reports_sites(repo, write):
+    write("docs/a.md", "one [~cpu]\ntwo {~cpu}\n")
+    sites = find(repo, "cpu", {"in": "docs/*.md", "wrap": r'[\[{]~${entity}[\]}]'})
+    assert [line for _, line, _ in sites] == [1, 2]

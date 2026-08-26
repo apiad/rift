@@ -461,3 +461,72 @@ def test_stats_accepts_repeatable_strip(repo, write):
     result = runner.invoke(main, ["stats", "chapters/*.md", "-p", str(repo),
                                   "-s", r'\{~[^}]*\}'])
     assert result.exit_code == 0
+
+
+# --- forbid allowances: max_per_file and max_files ---
+
+RULE_MARKERS = {
+    "name": "markers",
+    "extract": {"list": ["{~cpu}"]},
+    "forbid": {"in": "chapters/*.md", "as": "mention", "max_per_file": 1},
+}
+
+
+def test_max_per_file_allows_the_first_occurrence(repo, write):
+    write("chapters/ch01.md", "a {~cpu} b\n")
+    config(write, RULE_MARKERS)
+    assert runner.invoke(main, ["check", str(repo)]).exit_code == 0
+
+
+def test_max_per_file_flags_only_the_excess(repo, write):
+    write("chapters/ch01.md", "one {~cpu}\ntwo {~cpu}\nthree {~cpu}\n")
+    config(write, RULE_MARKERS)
+    out = runner.invoke(main, ["check", str(repo)])
+    assert out.exit_code == 1
+    assert "2 occurrences" in out.output      # the 2nd and 3rd, not all three
+    assert "ch01.md:2" in out.output and "ch01.md:3" in out.output
+    assert "ch01.md:1" not in out.output
+
+
+def test_max_per_file_counts_per_file_not_across_the_set(repo, write):
+    write("chapters/ch01.md", "{~cpu}\n")
+    write("chapters/ch02.md", "{~cpu}\n")
+    config(write, RULE_MARKERS)
+    assert runner.invoke(main, ["check", str(repo)]).exit_code == 0
+
+
+def test_default_is_still_zero_tolerance(repo, write):
+    """Absent both keys, forbid means what it always meant."""
+    write("chapters/ch01.md", "{~cpu}\n")
+    config(write, {**RULE_MARKERS, "forbid": {"in": "chapters/*.md", "as": "mention"}})
+    assert runner.invoke(main, ["check", str(repo)]).exit_code == 1
+
+
+RULE_LABELS = {
+    "name": "footnote labels",
+    "extract": {"list": ["[^brooks]:"]},
+    "forbid": {"in": "chapters/*.md", "as": "mention", "max_files": 1},
+}
+
+
+def test_max_files_allows_one_file(repo, write):
+    write("chapters/ch01.md", "[^brooks]: A citation.\n")
+    config(write, RULE_LABELS)
+    assert runner.invoke(main, ["check", str(repo)]).exit_code == 0
+
+
+def test_max_files_flags_the_second_file(repo, write):
+    write("chapters/ch01.md", "[^brooks]: A citation.\n")
+    write("chapters/ch02.md", "[^brooks]: A different citation.\n")
+    config(write, RULE_LABELS)
+    out = runner.invoke(main, ["check", str(repo)])
+    assert out.exit_code == 1
+    assert "ch02.md" in out.output
+    assert "ch01.md" not in out.output
+
+
+def test_max_files_does_not_apply_the_zero_default_per_file(repo, write):
+    """Setting only max_files must not make every occurrence a violation."""
+    write("chapters/ch01.md", "[^brooks]: One.\nand again [^brooks]:\n")
+    config(write, RULE_LABELS)
+    assert runner.invoke(main, ["check", str(repo)]).exit_code == 0
