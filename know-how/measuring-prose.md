@@ -100,6 +100,45 @@ plausible-sounding threshold picked in advance is how a linter starts crying wol
 unless you have a reason the absolute value matters. Remember it needs at least 4
 files — below that rift reports the number, warns, and does not judge.
 
+## Encoding a style guide: what converts and what does not
+
+Taking a real book's prose rules (`repos/books-tsoc`, CALIBRATION.md plus six
+know-how docs) rule by rule, the split was sharp.
+
+**Converts cleanly** — anything that is a *phrase*, a *density*, or a
+*cross-reference*. Banned register ("basically", "it turns out"), forward and
+backward chapter heralds, academic royal plural, em-dash budget, intensifier
+budget, author/reader presence, every marker resolving to a real glossary key,
+every glossary key actually being marked, a term marked only once per chapter, a
+footnote label defined only once.
+
+**Does not convert, and should not be forced** — the 2:2:1 historical/didactic/
+philosophical weave, "characters have minds", "concrete before abstract", "the
+coda must be unrepeatable in another chapter", "section titles are slogans not
+topic labels", "open with urgency not definition". Each needs a reader. Encoding
+a proxy is how a linter starts lying: `mean-heading-length` is not a slogan
+detector.
+
+**Two rules of thumb that emerged:**
+
+*A rule that is mostly red is noise, not a check.* The book declares a 2,000–3,000
+word target; 22 of its 26 chapters are outside it. Encoding that target produces
+22 warnings every run and trains everyone to skim past red. `vs-siblings` on
+`word-count` instead flags exactly one chapter, and that one is worth looking at.
+When your declared target and your actual corpus disagree, the linter's job is to
+surface the disagreement once — in a task — not to shout it every run.
+
+*A rule that is green on arrival is still worth writing.* Six of the rules here
+found nothing, because a holistic revision pass had already fixed them. They are
+regression guards for expensive manual work, which is the cheapest kind of rule
+to own.
+
+**Watch for permissive matching quietly weakening a rule.** "Every glossary entry
+is used" with `as: mention` reported 26 unused; the true number was 34, because
+the entry `abstraction` was being satisfied by the ordinary word *abstraction*.
+`wrap:` fixes it by matching the marker instead of the bare string. Any rule whose
+entities are *keys* rather than *prose* probably wants `wrap:`.
+
 ## Related
 
 - **[writing-rules](writing-rules.md)** — the bar a rule has to clear before it

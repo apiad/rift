@@ -94,6 +94,7 @@ and `measure.files` take the same string-or-list.
 | `as:` | Passes when the entity… |
 |---|---|
 | `mention` (default) | appears anywhere as a **plain substring**. No word boundary — `api` is satisfied by `rapid`. Permissive by design. |
+| `wrap: <pattern>` | not an `as:` value but an override for it: the escaped entity is substituted into your pattern at `${entity}`. Use it to ask about a *marked* term rather than a bare word — `wrap: '[\[{]~${entity}[\]}]'` matches `[~cpu]` and `{~cpu}` but not the word "cpu". |
 | `word` | appears as a whole word (`\b`-wrapped, literal). **The default for `forbid`** — without it, banning `just` flags `adjusted`. |
 | `regex` | the entity *is* a pattern, matched as written. |
 | `heading` | appears in a heading of any level (`#`–`######`). |
@@ -143,6 +144,14 @@ prose and a linter that fires on a quotation is one you switch off in a week.
 code fence is documentation — masking it would break every rule that documents an
 env var inside a bash block.
 
+**Allowances.** Plain `forbid` is zero tolerance. Two optional keys generalise it
+without turning it into a counting rule — the report is still `file:line` sites:
+
+| Key | Means |
+|---|---|
+| `max_per_file: N` | the first N in each file are fine; report the rest. *"Mark a glossary term only on first use in a chapter."* |
+| `max_files: N` | the entity may appear in at most N files; report the excess. *"Never define a footnote label twice."* |
+
 rift ships **no banned list**. What counts as bad phrasing is taste, and taste
 lives in your `.rift.yaml`.
 
@@ -169,7 +178,7 @@ sharply from its peers. A set of fewer than 4 files is reported with a warning a
 **not** judged; silently passing or failing would both be lies about what was
 checked. An absent `expect` reports the number and passes.
 
-**Metrics.** `burrows-delta` (authorial fingerprint, from the rates of the most
+**Metrics.** `word-count` · `burrows-delta` (authorial fingerprint, from the rates of the most
 frequent tokens — noisy at chapter length, so rank it rather than trusting the
 absolute value) · `sentence-length-cv`, `short-sentence-ratio`,
 `sentence-length-autocorr`, `mean-sentence-length` (rhythm) · `mattr`,
