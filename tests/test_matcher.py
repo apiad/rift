@@ -91,3 +91,90 @@ def test_an_unknown_matcher_never_satisfies_a_rule(repo, write):
 
 def test_no_docs_at_all_means_nothing_is_documented(repo):
     assert check(repo, "worker", MENTION) is False
+
+
+# --- as: word / as: regex / find() (prose-linting slice 1) ---
+
+from rift.matcher import find
+
+WORD = {"in": "docs/**/*.md", "as": "word"}
+FORBID = {"in": "docs/**/*.md", "as": "word"}
+
+
+def test_word_does_not_match_inside_a_longer_word(repo, write):
+    """The opposite of `mention`, pinned with equal force."""
+    write("docs/design.md", "adjusted rapid sandbox-dbg\n")
+    assert check(repo, "just", WORD) is False
+    assert check(repo, "api", WORD) is False
+    assert check(repo, "db", WORD) is False
+
+
+def test_word_matches_a_standalone_word(repo, write):
+    write("docs/design.md", "we just ship it\n")
+    assert check(repo, "just", WORD) is True
+
+
+def test_word_matches_a_multi_word_phrase(repo, write):
+    write("docs/design.md", "the rich history of computing\n")
+    assert check(repo, "rich history of", WORD) is True
+
+
+def test_word_is_literal_not_a_pattern(repo, write):
+    write("docs/design.md", "a.c\n")
+    assert check(repo, "abc", WORD) is False
+
+
+def test_regex_treats_the_entity_as_a_pattern(repo, write):
+    write("docs/design.md", "very quickly indeed\n")
+    assert check(repo, r"\bvery\s+\w+ly\b", {"in": "docs/**/*.md", "as": "regex"}) is True
+
+
+def test_regex_reports_no_match(repo, write):
+    write("docs/design.md", "slowly and surely\n")
+    assert check(repo, r"\bvery\s+\w+ly\b", {"in": "docs/**/*.md", "as": "regex"}) is False
+
+
+def test_find_reports_every_occurrence_not_just_the_first(repo, write):
+    """A find() that early-returned like check() would pass any non-empty test."""
+    write("docs/a.md", "delve here\nand delve again\n")
+    write("docs/b.md", "delve once more\n")
+    sites = find(repo, "delve", FORBID)
+    assert len(sites) == 3
+
+
+def test_find_reports_the_correct_line_numbers(repo, write):
+    write("docs/a.md", "one\ntwo\ndelve\n")
+    assert [line for _, line, _ in find(repo, "delve", FORBID)] == [3]
+
+
+def test_find_skips_masked_regions(repo, write):
+    write("docs/a.md", "prose\n```\ndelve\n```\n> quoted delve\n")
+    assert find(repo, "delve", FORBID) == []
+
+
+def test_find_counts_a_site_outside_the_fence_with_the_right_line(repo, write):
+    write("docs/a.md", "one\n```\ndelve\n```\nfive delve\n")
+    sites = find(repo, "delve", FORBID)
+    assert [line for _, line, _ in sites] == [5]
+
+
+def test_find_respects_include_quotes(repo, write):
+    write("docs/a.md", "> quoted delve\n")
+    assert find(repo, "delve", FORBID) == []
+    assert len(find(repo, "delve", {**FORBID, "include_quotes": True})) == 1
+
+
+def test_find_defaults_to_word_boundaries(repo, write):
+    write("docs/a.md", "adjusted\n")
+    assert find(repo, "just", {"in": "docs/**/*.md"}) == []
+
+
+def test_find_is_case_insensitive_on_request(repo, write):
+    write("docs/a.md", "Delve here\n")
+    assert find(repo, "delve", FORBID) == []
+    assert len(find(repo, "delve", {**FORBID, "case_insensitive": True})) == 1
+
+
+def test_find_returns_nothing_when_clean(repo, write):
+    write("docs/a.md", "perfectly ordinary prose\n")
+    assert find(repo, "delve", FORBID) == []

@@ -99,3 +99,43 @@ def test_unparseable_yaml_yields_nothing_instead_of_raising(repo, write):
     """
     write("compose.yml", "services:\n  api:\n   - bad\n  : : :\n")
     assert extract(repo, {"file": "compose.yml", "yaml_keys": "services"}) == set()
+
+
+# --- list: and lines: (prose-linting slice 1) ---
+
+
+def test_list_yields_its_literal_entries(repo):
+    assert extract(repo, {"list": ["delve", "tapestry"]}) == {"delve", "tapestry"}
+
+
+def test_list_is_standalone_and_ignores_a_file_key(repo, write):
+    write("data/other.yaml", "a: b\n")
+    assert extract(repo, {"list": ["delve"], "file": "data/other.yaml"}) == {"delve"}
+
+
+def test_list_preserves_multi_word_phrases(repo):
+    assert extract(repo, {"list": ["rich history of"]}) == {"rich history of"}
+
+
+def test_list_coerces_non_strings(repo):
+    assert extract(repo, {"list": [42]}) == {"42"}
+
+
+def test_lines_yields_each_non_empty_line(repo, write):
+    write("prose/banned.txt", "delve\ntapestry\n")
+    assert extract(repo, {"file": "prose/banned.txt", "lines": True}) == {"delve", "tapestry"}
+
+
+def test_lines_skips_comments_and_blanks(repo, write):
+    write("prose/banned.txt", "# AI-tic phrases\n\ndelve\n\n#another\ntapestry\n")
+    assert extract(repo, {"file": "prose/banned.txt", "lines": True}) == {"delve", "tapestry"}
+
+
+def test_lines_strips_surrounding_whitespace(repo, write):
+    write("prose/banned.txt", "  delve  \n")
+    assert extract(repo, {"file": "prose/banned.txt", "lines": True}) == {"delve"}
+
+
+def test_lines_keeps_internal_spaces_so_phrases_survive(repo, write):
+    write("prose/banned.txt", "rich history of\n")
+    assert extract(repo, {"file": "prose/banned.txt", "lines": True}) == {"rich history of"}

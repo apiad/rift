@@ -7,6 +7,9 @@ def extract(root: Path, config: dict) -> set[str]:
     """Extract a set of entity strings from the codebase."""
     results = set()
 
+    if "list" in config:
+        return {str(x) for x in config["list"]}
+
     if "files" in config:
         for path in root.glob(config["files"]):
             results.add(path.stem if path.is_file() else path.name)
@@ -38,6 +41,16 @@ def extract(root: Path, config: dict) -> set[str]:
                     results.update(str(v) for v in node.values())
                 elif isinstance(node, list):
                     results.update(str(v) for v in node)
+            except Exception:
+                pass
+
+    elif config.get("lines"):
+        for f in matching_files:
+            try:
+                for line in f.read_text().splitlines():
+                    stripped = line.strip()
+                    if stripped and not stripped.startswith("#"):
+                        results.add(stripped)
             except Exception:
                 pass
 
