@@ -1,21 +1,8 @@
 import re
 from pathlib import Path
 
+from .extractor import resolve_globs
 from .text import line_of, mask
-
-
-def resolve_globs(root: Path, patterns) -> list[Path]:
-    """Files matching one glob or a list of them, deduplicated and ordered.
-
-    A single document set is often several globs — the chapter directories plus
-    a couple of named top-level files — and there is no glob that spells that.
-    """
-    if isinstance(patterns, str):
-        patterns = [patterns]
-    found = []
-    for pattern in patterns:
-        found.extend(root.glob(pattern))
-    return sorted({f for f in found if f.is_file()})
 
 
 def check(root: Path, entity: str, require: dict) -> bool:

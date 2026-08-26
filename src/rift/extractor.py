@@ -3,12 +3,29 @@ import yaml
 from pathlib import Path
 
 
+def resolve_globs(root: Path, patterns) -> list[Path]:
+    """Files matching one glob or a list of them, deduplicated and ordered.
+
+    A single document set is often several globs — the chapter directories plus
+    a couple of named top-level files — and there is no glob that spells that.
+    """
+    if isinstance(patterns, str):
+        patterns = [patterns]
+    found = []
+    for pattern in patterns:
+        found.extend(root.glob(pattern))
+    return sorted({f for f in found if f.is_file()})
+
+
 def extract(root: Path, config: dict) -> set[str]:
     """Extract a set of entity strings from the codebase."""
     results = set()
 
     if "list" in config:
         return {str(x) for x in config["list"]}
+
+    if "paths" in config:
+        return {str(p.relative_to(root)) for p in resolve_globs(root, config["paths"])}
 
     if "files" in config:
         for path in root.glob(config["files"]):

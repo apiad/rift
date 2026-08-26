@@ -76,7 +76,8 @@ Exactly one per rule. `files` and `dirs_with` stand alone; the rest need a `file
 | `regex: <pattern>` | Capture group 1 if the pattern has one, otherwise the whole match. Compiled with `MULTILINE`, so `^` and `$` anchor per line. |
 | `lines: true` | Each non-empty line of `file:` that doesn't start with `#`, stripped. For a roster or banned list kept as plain text. |
 | `list: [a, b]` | The literal strings, written inline in the rule. Standalone — a banned list is *your* taste, so it belongs in the config rather than a repo data file. |
-| `files: <glob>` | The *stem* of each matching file (`apps/one.py` → `one`). Standalone. |
+| `files: <glob>` | The *stem* of each matching file (`apps/one.py` → `one`). Standalone, and **lossy** — `a/index.md` and `b/index.md` collapse to one entity. |
+| `paths: <glob>` | The path of each matching file, relative to the root (`apps/one.py`). Standalone. Reach for this over `files:` whenever two matches could share a stem. |
 | `dirs_with: <glob>` | The parent directory name of each matching file (`apps/alpha/Dockerfile` → `alpha`). Recursive; skips `.git`, `.venv`, `__pycache__`, `node_modules`, `.playground`. Standalone. |
 
 ### Matchers

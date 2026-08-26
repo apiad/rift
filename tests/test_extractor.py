@@ -139,3 +139,31 @@ def test_lines_strips_surrounding_whitespace(repo, write):
 def test_lines_keeps_internal_spaces_so_phrases_survive(repo, write):
     write("prose/banned.txt", "rich history of\n")
     assert extract(repo, {"file": "prose/banned.txt", "lines": True}) == {"rich history of"}
+
+
+# --- paths: (the non-lossy sibling of files:) ---
+
+
+def test_paths_yields_the_relative_path_not_the_stem(repo, write):
+    write("a/one.md", "x")
+    assert extract(repo, {"paths": "a/*.md"}) == {"a/one.md"}
+
+
+def test_paths_keeps_same_named_files_in_different_dirs_distinct(repo, write):
+    """`files:` collapses these to one stem; that hides an orphaned file."""
+    write("a/index.md", "x")
+    write("b/index.md", "x")
+    assert extract(repo, {"files": "*/index.md"}) == {"index"}
+    assert extract(repo, {"paths": "*/index.md"}) == {"a/index.md", "b/index.md"}
+
+
+def test_paths_accepts_a_list_of_globs(repo, write):
+    write("a/one.md", "x")
+    write("b/two.md", "x")
+    assert extract(repo, {"paths": ["a/*.md", "b/*.md"]}) == {"a/one.md", "b/two.md"}
+
+
+def test_paths_ignores_directories(repo, write):
+    write("a/one.md", "x")
+    (repo / "a" / "sub.md").mkdir(parents=True)
+    assert extract(repo, {"paths": "a/*"}) == {"a/one.md"}
