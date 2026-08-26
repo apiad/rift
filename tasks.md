@@ -19,17 +19,6 @@ error distinct from "entities missing" — a rule whose *source* is broken shoul
 fail loudly and differently from a rule whose *docs* are incomplete. Worth adding
 a matching exit code, or at minimum a red line that says `could not read X`.
 
-### 🔜 Not wired into any CI (2026-08-10)
-
-Nothing runs `rift check` on a push, in this repo or in its one consumer. Until
-it does, it only catches drift when somebody remembers to look — and the whole
-argument for making the check mechanical and fast was that it could run
-unattended.
-
-Smallest useful step: a GitHub Actions job on `apiad/ainbox` that runs
-`rift check` and fails the build on an error-severity rule. rift is not on PyPI,
-so that job has to install it from git.
-
 ### 🔵 Repo is private — decide whether to publish (2026-08-10)
 
 Created private on 2026-08-10 as the cautious default. There is nothing
@@ -38,6 +27,28 @@ public, it wants a PyPI release too, since installing a linter from a git URL is
 most of the friction in adopting one.
 
 ## Done
+
+### ✅ CI, and releases gated on it (2026-08-26)
+
+`ci.yml` on push/PR across 3.11 and 3.13; `release.yml` on a `v*` tag. The release
+job runs the suite **before** publishing — a release workflow that skips the tests
+would happily ship a red tag — then checks the tag matches `pyproject.toml`, builds
+sdist+wheel, and publishes using the hand-written CHANGELOG section, falling back
+to generated notes only when the section is missing. Idempotent on re-run.
+
+Two things worth keeping:
+
+- **`uv sync --locked` in both jobs is not housekeeping.** v0.2.0 was tagged by
+  hand with `uv.lock` still pinned at `0.1.0`, so `uv sync --locked` was broken on
+  the released tag and nothing noticed. The lock check is what makes the release
+  reproducible.
+- **The version guard was proven to fail before being trusted**, by running its
+  script locally with a mismatched tag. So was the notes extractor, against the
+  real CHANGELOG and against a tag with no section. A gate nobody has watched go
+  red is not a gate.
+
+Verified end to end by cutting v0.2.1 through the pipeline: run green, release
+published, both artifacts attached, body taken from the CHANGELOG.
 
 ### ✅ Prose linting shipped and proven on a real consumer (2026-08-26)
 

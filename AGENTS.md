@@ -81,6 +81,15 @@ appear), `measure`/`expect` (what is this number). Two real consumers —
 `repos/ainbox/.rift.yaml` (5 rules) and `repos/books-tsoc/.rift.yaml` (8 rules,
 which replaced ~450 lines of bespoke Python test code).
 
+CI runs the suite on push and PR (3.11, 3.13); a `v*` tag runs `release.yml`,
+which gates on the suite, checks the tag matches `pyproject.toml`, builds
+sdist+wheel and publishes with the CHANGELOG section for that version.
+
+**Releasing:** bump `pyproject.toml`, run `uv lock`, add the CHANGELOG section,
+commit, then push an annotated `vX.Y.Z` tag. Everything after the tag is
+automatic. Both workflows use `uv sync --locked`, so forgetting `uv lock` fails
+the build rather than shipping — v0.2.0 was cut by hand with the lock stale at
+`0.1.0` and nothing caught it.
+
 Not on PyPI; installed on zion as an editable uv tool (`uv tool install
---editable`). Not wired into any CI, which is the largest remaining gap — see
-`tasks.md`.
+--editable`). Publishing to PyPI is a deliberate open question — see `tasks.md`.
