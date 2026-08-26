@@ -4,6 +4,18 @@ All notable changes to this project are documented here. Format: Keep a Changelo
 
 ## [Unreleased]
 
+## [v0.2.1] - 2026-08-26
+
+### Other
+
+- **CI, at last.** `ci.yml` runs the suite on push and PR against Python 3.11 and
+  3.13. `release.yml` fires on a `v*` tag and runs the suite *before* publishing,
+  checks the tag matches `pyproject.toml`, builds sdist and wheel, and publishes
+  using the hand-written CHANGELOG section for this version.
+- **`uv sync --locked` was broken on the v0.2.0 tag** — that release was cut with
+  `uv.lock` still pinned at `0.1.0`. Both workflows now use `--locked`, so a stale
+  lockfile fails the build instead of shipping.
+
 ## [v0.2.0] - 2026-08-26
 
 rift went from one rule kind to three. It still answers *"does this thing exist in
