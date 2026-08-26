@@ -178,3 +178,47 @@ def test_find_is_case_insensitive_on_request(repo, write):
 def test_find_returns_nothing_when_clean(repo, write):
     write("docs/a.md", "perfectly ordinary prose\n")
     assert find(repo, "delve", FORBID) == []
+
+
+# --- multi-glob `in:` and MULTILINE regex (needed by real configs) ---
+
+
+def test_in_accepts_a_list_of_globs(repo, write):
+    write("a/one.md", "worker\n")
+    write("b/two.md", "sandbox\n")
+    req = {"in": ["a/*.md", "b/*.md"], "as": "word"}
+    assert check(repo, "worker", req) is True
+    assert check(repo, "sandbox", req) is True
+
+
+def test_in_as_a_list_excludes_what_it_does_not_name(repo, write):
+    write("a/one.md", "worker\n")
+    write("c/three.md", "sandbox\n")
+    req = {"in": ["a/*.md", "b/*.md"], "as": "word"}
+    assert check(repo, "sandbox", req) is False
+
+
+def test_find_accepts_a_list_of_globs(repo, write):
+    write("a/one.md", "delve\n")
+    write("b/two.md", "delve\n")
+    write("c/three.md", "delve\n")
+    sites = find(repo, "delve", {"in": ["a/*.md", "b/*.md"], "as": "word"})
+    assert len(sites) == 2
+
+
+def test_find_does_not_double_report_overlapping_globs(repo, write):
+    write("a/one.md", "delve\n")
+    sites = find(repo, "delve", {"in": ["a/*.md", "a/one.md"], "as": "word"})
+    assert len(sites) == 1
+
+
+def test_find_compiles_regex_multiline_so_caret_anchors_per_line(repo, write):
+    """`^---$` is the shape a real banned-pattern rule needs."""
+    write("a/one.md", "prose\n---\nmore prose\n")
+    sites = find(repo, r"^---$", {"in": "a/*.md", "as": "regex"})
+    assert [line for _, line, _ in sites] == [2]
+
+
+def test_multiline_regex_does_not_match_a_rule_inside_a_fence(repo, write):
+    write("a/one.md", "prose\n```\n---\n```\n")
+    assert find(repo, r"^---$", {"in": "a/*.md", "as": "regex"}) == []

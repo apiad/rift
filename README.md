@@ -81,8 +81,14 @@ Exactly one per rule. `files` and `dirs_with` stand alone; the rest need a `file
 
 ### Matchers
 
-`require.as` decides what "documented" means. `require.in` is the doc glob
-(default `docs/**/*.md`); the entity passes if **any** matching file satisfies it.
+`require.as` decides what "documented" means. `require.in` is the doc glob — or a
+**list** of globs, since a real document set is often several (`["[1-4]_*/*.md",
+"preface.md"]`) and there is no single glob that spells that. Default
+`docs/**/*.md`; the entity passes if **any** matching file satisfies it. `forbid.in`
+and `measure.files` take the same string-or-list.
+
+`as: regex` compiles with `MULTILINE`, matching the `regex:` extractor and
+`pattern:` counting — so `^` and `$` anchor per line everywhere in a config.
 
 | `as:` | Passes when the entity… |
 |---|---|

@@ -8,7 +8,7 @@ from rich.table import Table
 
 from . import measure
 from .extractor import extract
-from .matcher import check, find
+from .matcher import check, find, resolve_globs
 
 console = Console()
 
@@ -52,9 +52,7 @@ def _occurrences(root: Path, rule: dict) -> list[tuple[Path, int, str]]:
 def _values(root: Path, spec: dict) -> dict:
     """The metric value per file for a measure spec."""
     texts = {}
-    for f in sorted(root.glob(spec.get("files", ""))):
-        if not f.is_file():
-            continue
+    for f in resolve_globs(root, spec.get("files", [])):
         try:
             texts[f] = f.read_text()
         except Exception:

@@ -4,6 +4,20 @@ from pathlib import Path
 from .text import line_of, mask
 
 
+def resolve_globs(root: Path, patterns) -> list[Path]:
+    """Files matching one glob or a list of them, deduplicated and ordered.
+
+    A single document set is often several globs — the chapter directories plus
+    a couple of named top-level files — and there is no glob that spells that.
+    """
+    if isinstance(patterns, str):
+        patterns = [patterns]
+    found = []
+    for pattern in patterns:
+        found.extend(root.glob(pattern))
+    return sorted({f for f in found if f.is_file()})
+
+
 def check(root: Path, entity: str, require: dict) -> bool:
     """Return True if entity satisfies the require condition.
 
@@ -15,8 +29,7 @@ def check(root: Path, entity: str, require: dict) -> bool:
     if require.get("exists"):
         return (root / entity).exists()
 
-    doc_pattern = require.get("in", "docs/**/*.md")
-    doc_files = list(root.glob(doc_pattern))
+    doc_files = resolve_globs(root, require.get("in", "docs/**/*.md"))
     as_type = require.get("as", "mention")
     case_insensitive = require.get("case_insensitive", False)
 
@@ -47,7 +60,6 @@ def find(root: Path, entity: str, forbid: dict) -> list[tuple[Path, int, str]]:
     `forbid` asks whether something is in your prose, and a code fence, a link
     URL and a quotation of someone else are not your prose.
     """
-    doc_pattern = forbid.get("in", "docs/**/*.md")
     as_type = forbid.get("as", "word")
     case_insensitive = forbid.get("case_insensitive", False)
     include_quotes = forbid.get("include_quotes", False)
@@ -55,16 +67,17 @@ def find(root: Path, entity: str, forbid: dict) -> list[tuple[Path, int, str]]:
     pattern = _pattern_for(entity, as_type)
     if pattern is None:
         return []
-    flags = re.IGNORECASE if case_insensitive else 0
+    # MULTILINE to match the extractor and pattern counting: a real banned
+    # pattern is line-anchored (`^---$`), and three different meanings of `^`
+    # across one config would be a trap.
+    flags = re.MULTILINE | (re.IGNORECASE if case_insensitive else 0)
     try:
         compiled = re.compile(pattern, flags)
     except re.error:
         return []
 
     sites = []
-    for doc_file in sorted(root.glob(doc_pattern)):
-        if not doc_file.is_file():
-            continue
+    for doc_file in resolve_globs(root, forbid.get("in", "docs/**/*.md")):
         try:
             text = mask(doc_file.read_text(), include_quotes)
         except Exception:

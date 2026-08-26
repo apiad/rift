@@ -421,3 +421,16 @@ def test_stats_never_judges_even_when_a_value_is_extreme(repo, write):
 def test_stats_on_an_empty_set_exits_zero(repo, write):
     result = runner.invoke(main, ["stats", "nothing/*.md", "-p", str(repo)])
     assert result.exit_code == 0
+
+
+def test_measure_files_accepts_a_list_of_globs(repo, write):
+    write("a/ch01.md", CH3)
+    write("b/ch02.md", CH30)
+    config(write, {
+        "name": "rhythm across two dirs",
+        "measure": {"files": ["a/*.md", "b/*.md"], "metric": "mean-sentence-length"},
+        "expect": {"max": 10.0},
+    })
+    result = runner.invoke(main, ["check", str(repo)])
+    assert result.exit_code == 1
+    assert "ch02.md" in result.output
