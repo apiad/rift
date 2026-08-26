@@ -4,6 +4,38 @@ All notable changes to this project are documented here. Format: Keep a Changelo
 
 ## [Unreleased]
 
+## [v0.3.0] - 2026-08-26
+
+Three primitives, all of which came from encoding a real book's style guide
+(`books-tsoc`) rather than from imagining what a config might want.
+
+### Features
+
+- **`word-count` metric** — prose tokens, masked and stripped like every other
+  metric.
+- **`forbid` allowances.** `max_per_file: N` allows the first N occurrences in
+  each file and reports the rest (*"mark a glossary term only on first use in a
+  chapter"*). `max_files: N` allows the entity in at most N files and reports the
+  excess (*"never define a footnote label twice"*). Plain `forbid` is unchanged:
+  zero tolerance.
+- **`wrap:`** — substitute the escaped entity into a caller-supplied pattern via
+  `${entity}`, so a rule can ask about a *marked* term rather than a bare word.
+- **`extract.file` takes a list of globs**, like `in:`.
+
+### Fixes
+
+- `wrap` is a correctness fix, not a convenience. *"Every glossary entry is used"*
+  with `as: mention` reported 26 unused entries; the true number was 34, because
+  the entry `abstraction` was being satisfied by the ordinary word *abstraction*
+  appearing in prose.
+
+### Notes
+
+189 tests. Seven mutants run against the new code; **one initially survived** — the
+`wrap` escaping test had the entity and the document the wrong way round and
+asserted nothing about escaping. Rewritten so an entity carrying a regex metachar
+must match literally; the mutant now dies.
+
 ## [v0.2.1] - 2026-08-26
 
 ### Other
