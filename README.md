@@ -4,10 +4,15 @@ A documentation drift linter. You declare facts that live in your code and confi
 compose services, env vars, version pins, directory names — and assert that each one
 appears in your docs. `rift check` exits 1 when something isn't documented.
 
-It does not read your prose for meaning. It answers one narrow question, mechanically:
-**does this thing exist in the codebase but not in the docs?** (Or, inverted: does this
-doc name a file that isn't on disk?) That narrowness is the point — it makes the check
-cheap enough to run in CI and boring enough to trust.
+It also lints prose, without reading it for meaning. Two more mechanical questions:
+**does this document contain text I declared it must not?** (`forbid`) and **is this
+document shaped like its siblings?** (`measure`). rift counts; it never interprets. It
+reports a number and the threshold you declared it against, and it will never tell you
+that prose is bad, machine-written, or good.
+
+That narrowness is the point — it makes every check cheap enough to run in CI and boring
+enough to trust. See `docs/prose-linting-design.md` for why each metric was chosen and
+which were deliberately excluded.
 
 ## Install
 
@@ -22,6 +27,7 @@ uv run rift --help
 rift init          # scaffold a starter .rift.yaml
 rift check         # run every rule; exit 1 if any error-severity rule fails
 rift list          # per-entity ✓/✗ breakdown — use this to tune a noisy rule
+rift stats 'ch*.md'   # the full metric table for a file set; never judges, always exits 0
 ```
 
 `rift check` and `rift list` take an optional project root (default `.`) and
@@ -29,12 +35,21 @@ rift list          # per-entity ✓/✗ breakdown — use this to tune a noisy r
 `rift list -r <substring>` filters to matching rule names.
 
 **Exit codes:** `0` all rules pass, or only warnings failed · `1` at least one
-error-severity rule failed · `2` no config file found.
+error-severity rule failed · `2` no config file found, or a malformed rule.
 
 ## Config
 
-`.rift.yaml` is a list of rules. Each rule **extracts** a set of strings from the
-codebase and **requires** each one to show up somewhere.
+`.rift.yaml` is a list of rules. A rule carries **exactly one** of three shapes;
+more than one is a config error.
+
+| Shape | Asks | Reports |
+|---|---|---|
+| `extract` + `require` | does each extracted string appear? | missing entities |
+| `extract` + `forbid` | where does each extracted string appear? | `file:line` sites |
+| `measure` + `expect` | what is this number, and is it in bounds? | values and thresholds |
+
+`extract` feeds the first two: where a set of strings comes from is orthogonal to
+what you then assert about it.
 
 ```yaml
 rules:
@@ -59,6 +74,8 @@ Exactly one per rule. `files` and `dirs_with` stand alone; the rest need a `file
 | `yaml_values: <a.b.c>` | The values of the mapping, or the items of the list, at that path. |
 | `env_names: true` | Variable names matching `^[A-Z_][A-Z0-9_]*=`. Comments, blank lines, indented lines and lowercase names are skipped. |
 | `regex: <pattern>` | Capture group 1 if the pattern has one, otherwise the whole match. Compiled with `MULTILINE`, so `^` and `$` anchor per line. |
+| `lines: true` | Each non-empty line of `file:` that doesn't start with `#`, stripped. For a roster or banned list kept as plain text. |
+| `list: [a, b]` | The literal strings, written inline in the rule. Standalone — a banned list is *your* taste, so it belongs in the config rather than a repo data file. |
 | `files: <glob>` | The *stem* of each matching file (`apps/one.py` → `one`). Standalone. |
 | `dirs_with: <glob>` | The parent directory name of each matching file (`apps/alpha/Dockerfile` → `alpha`). Recursive; skips `.git`, `.venv`, `__pycache__`, `node_modules`, `.playground`. Standalone. |
 
@@ -70,6 +87,8 @@ Exactly one per rule. `files` and `dirs_with` stand alone; the rest need a `file
 | `as:` | Passes when the entity… |
 |---|---|
 | `mention` (default) | appears anywhere as a **plain substring**. No word boundary — `api` is satisfied by `rapid`. Permissive by design. |
+| `word` | appears as a whole word (`\b`-wrapped, literal). **The default for `forbid`** — without it, banning `just` flags `adjusted`. |
+| `regex` | the entity *is* a pattern, matched as written. |
 | `heading` | appears in a heading of any level (`#`–`######`). |
 | `heading_N` | appears in a heading of exactly level N. `heading_2` matches `##` and rejects `#` and `###`. |
 | `table_cell` | appears inside a single `\|` … `\|` cell on one line. |
@@ -86,14 +105,110 @@ no-op for them.)
 An unrecognised `as:` value never matches, which surfaces as every entity being
 reported missing.
 
+## Prose rules
+
+### `forbid` — a banned lexicon
+
+```yaml
+  - name: "no AI-tic phrasing"
+    severity: warning
+    extract:
+      file: "prose/banned.txt"
+      lines: true
+    forbid:
+      in: "chapters/*.md"
+      as: word
+```
+
+```
+⚠  no AI-tic phrasing  [3 occurrences]
+   chapters/ch01.md:5   delve
+   chapters/ch01.md:5   rich history of
+   chapters/ch02.md:3   tapestry
+```
+
+`forbid` reads the document **masked**: fenced code, inline code, HTML tags, link
+URLs and blockquotes are blanked before matching, because none of them is your
+prose and a linter that fires on a quotation is one you switch off in a week.
+`include_quotes: true` puts blockquotes back in play.
+
+**`require` is never masked.** It asks whether something is *documented*, and a
+code fence is documentation — masking it would break every rule that documents an
+env var inside a bash block.
+
+rift ships **no banned list**. What counts as bad phrasing is taste, and taste
+lives in your `.rift.yaml`.
+
+### `measure` — statistics over a file set
+
+```yaml
+  - name: "no chapter reads like a different author"
+    measure:
+      files: "chapters/*.md"
+      metric: burrows-delta
+    expect:
+      vs-siblings: 2.0
+```
+
+| `expect` | Fails a file whose value… |
+|---|---|
+| `min` / `max` | is outside an absolute bound |
+| `vs-siblings: K` | is more than K standard deviations from the mean of the **other** files |
+
+**Reach for `vs-siblings` first.** It self-calibrates: the comparison set is your
+own document set, so it needs no tuning as the set grows, and it encodes no
+opinion about what any number should be — only that one file should not differ
+sharply from its peers. A set of fewer than 4 files is reported with a warning and
+**not** judged; silently passing or failing would both be lies about what was
+checked. An absent `expect` reports the number and passes.
+
+**Metrics.** `burrows-delta` (authorial fingerprint, from the rates of the most
+frequent tokens — noisy at chapter length, so rank it rather than trusting the
+absolute value) · `sentence-length-cv`, `short-sentence-ratio`,
+`sentence-length-autocorr`, `mean-sentence-length` (rhythm) · `mattr`,
+`hapax-ratio`, `self-repetition` (texture) · `paragraph-length-cv`,
+`mean-paragraph-length`, `sections`, `words-per-section`, `mean-heading-length`,
+`opening-paragraphs` (structure).
+
+Every one is language-agnostic — `\w+` tokenising and punctuation-based sentence
+splitting, so Spanish works unchanged. Readability scores are deliberately absent:
+Flesch and its relatives bake in English syllable assumptions *and* a theory of
+good writing.
+
+**Apparatus** is counted with a caller-supplied regex, so rift knows nothing about
+your renderer:
+
+```yaml
+    measure:
+      files: "chapters/*.md"
+      pattern: '\{~[a-z0-9-]+\}'
+      per: 1000
+    expect:
+      vs-siblings: 2.5
+```
+
+### `measure` counts, `forbid` locates
+
+Both can express "this text should be rare". Pick by what you need back: a
+**budget** ("at most 3 em-dashes per 1000 words") is `measure` + `pattern` +
+`expect: {max: N}` and yields a number; a **ban** ("never this phrase") is
+`forbid` and yields sites.
+
 ## Known gaps
 
 - **A source file that won't parse makes its rule pass silently.** The extractor
   swallows every exception, so malformed YAML yields zero entities, and zero
   entities is indistinguishable from "everything is documented". Pinned by
   `test_unparseable_yaml_yields_nothing_instead_of_raising`.
-- **`mention` has no word-boundary option.** Short entity names produce false
-  passes. Use `table_cell` or `heading` where precision matters.
+- **`mention` is still a plain substring.** `api` is satisfied by `rapid`. This is
+  now a choice rather than a gap: reach for `as: word` when precision matters.
+  `mention` stays permissive because existing rules depend on it.
+- **A roster entity must be the string that actually appears.** `Dijkstra` passes
+  where `Edsger W. Dijkstra` fails; there is no alias mechanism. Roster the
+  surname, or use `as: regex`.
+- **Sentence splitting is deliberately crude.** `Ph.D.` over-splits. Every file in
+  a set is over-split by the same rule, so comparisons stay valid where the
+  absolute count does not — and no metric here depends on that count being right.
 
 ## Development
 
@@ -101,4 +216,12 @@ reported missing.
 uv run pytest -q
 ```
 
-40 tests covering every extractor, every matcher, and the CLI exit codes.
+152 tests covering every extractor, every matcher, every metric, and the CLI exit
+codes. Metric expectations are **hand-computed from the definitions**, never pasted
+from a run — a test whose expected value came from the code under test asserts
+nothing. Each metric also carries a discrimination test (a uniform fixture and a
+varied one, asserting it separates them in the right direction).
+
+**A linter that cannot fail is worse than no linter**, because it licenses
+shipping. After touching `matcher.py`, `measure.py` or the `expect` predicates,
+mutation-test: break the thing on purpose and confirm the suite goes red.

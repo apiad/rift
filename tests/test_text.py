@@ -63,3 +63,62 @@ def test_masking_does_not_shift_line_numbers_of_later_prose():
     masked = mask(src)
     pos = masked.index("delve")
     assert line_of(masked, pos) == 9
+
+
+# --- tokens / sentences / paragraphs (prose-linting slice 2) ---
+
+from rift.text import paragraphs, sentences, tokens
+
+
+def test_tokens_lowercases_and_drops_punctuation():
+    assert tokens("Hello, World!") == ["hello", "world"]
+
+
+def test_tokens_are_unicode_so_spanish_works_unchanged():
+    assert tokens("El niño comió") == ["el", "niño", "comió"]
+
+
+def test_tokens_count_numbers():
+    assert tokens("in 1936 Turing") == ["in", "1936", "turing"]
+
+
+def test_sentences_split_on_terminal_punctuation():
+    assert sentences("One two three. Four five six.") == [
+        ["one", "two", "three"],
+        ["four", "five", "six"],
+    ]
+
+
+def test_sentences_do_not_split_without_a_capital_or_digit_after():
+    """`3.14` and `e.g. thing` must not split."""
+    assert len(sentences("The value is 3.14 exactly.")) == 1
+
+
+def test_sentences_over_split_on_abbreviations_by_design():
+    """Documented crudeness: every file in a set is over-split by the same rule."""
+    assert len(sentences("Dr. Smith wrote it.")) == 2
+
+
+def test_sentences_treat_end_of_paragraph_as_a_boundary():
+    assert sentences("No terminator here") == [["no", "terminator", "here"]]
+
+
+def test_sentences_do_not_run_across_paragraphs():
+    assert len(sentences("First para\n\nSecond para")) == 2
+
+
+def test_paragraphs_are_blank_line_delimited():
+    assert paragraphs("one one\n\ntwo two\n") == ["one one", "two two"]
+
+
+def test_paragraphs_drop_headings():
+    assert paragraphs("# Title\n\nbody text\n") == ["body text"]
+
+
+def test_paragraphs_drop_list_blocks_and_tables():
+    src = "body\n\n- item one\n- item two\n\n| a | b |\n|---|---|\n\nmore body\n"
+    assert paragraphs(src) == ["body", "more body"]
+
+
+def test_paragraphs_join_wrapped_lines():
+    assert paragraphs("one\ntwo\n") == ["one\ntwo"]

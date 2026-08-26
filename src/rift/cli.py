@@ -2,8 +2,11 @@ import sys
 import click
 import yaml
 from pathlib import Path
+from statistics import mean, pstdev
 from rich.console import Console
+from rich.table import Table
 
+from . import measure
 from .extractor import extract
 from .matcher import check, find
 
@@ -12,7 +15,7 @@ console = Console()
 # The rule kinds. A rule carries exactly one; `extract` feeds the first two,
 # since where a set of strings comes from is orthogonal to what you assert
 # about it.
-RULE_KINDS = ("require", "forbid")
+RULE_KINDS = ("require", "forbid", "measure")
 
 
 class ConfigError(Exception):
@@ -44,6 +47,76 @@ def _occurrences(root: Path, rule: dict) -> list[tuple[Path, int, str]]:
         sites.extend(find(root, entity, rule["forbid"]))
     sites.sort(key=lambda s: (str(s[0]), s[1], s[2]))
     return sites
+
+
+def _values(root: Path, spec: dict) -> dict:
+    """The metric value per file for a measure spec."""
+    texts = {}
+    for f in sorted(root.glob(spec.get("files", ""))):
+        if not f.is_file():
+            continue
+        try:
+            texts[f] = f.read_text()
+        except Exception:
+            continue
+
+    if "pattern" in spec:
+        return {f: measure.pattern_count(t, spec["pattern"], spec.get("per")) for f, t in texts.items()}
+
+    metric = spec.get("metric")
+    if metric == "burrows-delta":
+        return measure.burrows_delta(texts)
+    fn = measure.METRICS.get(metric)
+    if fn is None:
+        raise ConfigError(f"unknown metric {metric!r}")
+    return {f: fn(t) for f, t in texts.items()}
+
+
+def _apply_expect(values: dict, expect: dict) -> tuple[list[tuple], list[str]]:
+    """Return (failures, notes) where a failure is (path, value, why).
+
+    No expect means report the number and pass — principle 2.
+    """
+    failures: list[tuple] = []
+    notes: list[str] = []
+    if not expect:
+        return failures, notes
+
+    for f, v in sorted(values.items()):
+        if "min" in expect and v < expect["min"]:
+            failures.append((f, v, f"below min {expect['min']}"))
+        if "max" in expect and v > expect["max"]:
+            failures.append((f, v, f"above max {expect['max']}"))
+
+    k = expect.get("vs-siblings")
+    if k is None:
+        return failures, notes
+
+    # Degenerate sets must not silently pass and must not fail — either would be
+    # a lie about what was checked.
+    if len(values) < 4:
+        notes.append(
+            f"set of {len(values)} is too small to judge against siblings "
+            "(needs 4); reported, not judged"
+        )
+        return failures, notes
+
+    for f, v in sorted(values.items()):
+        others = [w for g, w in values.items() if g != f]
+        m = mean(others)
+        s = pstdev(others)
+        if s == 0:
+            # Siblings are identical. If this file matches them there is no
+            # outlier; if it does not, it is maximally outlying — which is the
+            # case the check most needs to catch, not a division to skip.
+            if v != m:
+                failures.append((f, v, f"differs from identical siblings ({m:.2f})"))
+            continue
+        z = abs(v - m) / s
+        if z > k:
+            failures.append((f, v, f"{z:.2f} sd from siblings (max {k})"))
+
+    return failures, notes
 
 STARTER_CONFIG = """\
 rules:
@@ -87,15 +160,31 @@ def check_cmd(path, config):
         color = "red" if severity == "error" else "yellow"
         icon = "✗" if severity == "error" else "⚠"
 
+        notes: list[str] = []
         if kind == "require":
             entities = extract(root, rule["extract"])
             missing = sorted(e for e in entities if not check(root, e, rule["require"]))
             failures = [str(m) for m in missing]
             label = "missing"
-        else:
+        elif kind == "forbid":
             sites = _occurrences(root, rule)
             failures = [f"{p.relative_to(root)}:{line}   {entity}" for p, line, entity in sites]
             label = "occurrences"
+        else:
+            try:
+                values = _values(root, rule["measure"])
+            except ConfigError as e:
+                console.print(f"[red]Config error:[/red] in rule {rule['name']!r}: {e}")
+                sys.exit(2)
+            out_of_bounds, notes = _apply_expect(values, rule.get("expect", {}))
+            failures = [
+                f"{path.relative_to(root)}   {value:.2f}   {why}"
+                for path, value, why in out_of_bounds
+            ]
+            label = "out of bounds"
+
+        for note in notes:
+            console.print(f"[yellow]⚠[/yellow]  {rule['name']}  [yellow]{note}[/yellow]")
 
         if failures:
             console.print(
@@ -159,6 +248,44 @@ def list_cmd(path, config, rule):
             console.print(f"\n[bold]{r['name']}[/bold]  ({len(sites)} occurrences)")
             for path, line, entity in sites:
                 console.print(f"  [red]✗[/red] {path.relative_to(root)}:{line}   {entity}")
+
+
+@main.command("stats")
+@click.argument("files")
+@click.option("--path", "-p", default=".", type=click.Path(exists=True), help="Project root")
+@click.option("--metric", "-m", default=None, help="Filter to metrics matching a substring")
+def stats_cmd(files, path, metric):
+    """Report the metric table for a file set.
+
+    Never judges and always exits 0. This is the agent-facing surface: it is how
+    you ask whether a chapter is unlike its siblings without anyone having
+    written a rule first.
+    """
+    root = Path(path).resolve()
+    spec = {"files": files}
+
+    names = [n for n in measure.METRICS if not metric or metric in n]
+    if not metric or metric in "burrows-delta":
+        names.append("burrows-delta")
+
+    columns = {}
+    for name in names:
+        columns[name] = _values(root, {**spec, "metric": name})
+
+    paths = sorted({p for col in columns.values() for p in col})
+    if not paths:
+        console.print(f"[yellow]No files matched {files!r} under {root}[/yellow]")
+        return
+
+    table = Table(title=f"rift stats — {files}")
+    table.add_column("metric", style="bold")
+    for p in paths:
+        table.add_column(p.relative_to(root).stem, justify="right")
+
+    for name in names:
+        table.add_row(name, *(f"{columns[name].get(p, 0.0):.3f}" for p in paths))
+
+    console.print(table)
 
 
 @main.command("init")

@@ -91,6 +91,12 @@ that does not, is strictly safer than two implementations that agree today.
 prose: it should not move your voice metrics and must not trip your banned
 lexicon. `include_quotes: true` on a rule puts them back in play.
 
+**Masking applies to `forbid` and `measure`, never to `require`.** This was not
+obvious until implementation and is easy to get backwards. `require` asks whether
+something is **documented**, and a code fence is documentation — masking it would
+break every existing rule that documents an env var inside a bash block.
+`forbid` asks whether something is in **your prose**, and a code fence is not.
+
 ## The flagship: voice divergence
 
 **Burrows's Delta**, the standard method in authorship attribution.
@@ -224,8 +230,19 @@ at least 2 to be computable. With fewer than 4, rift reports the number, emits a
 warning that the set is too small to judge, and passes. It must not silently
 pass, and it must not fail — either would be a lie about what was checked.
 
-**Zero variance.** If every file has the identical metric value, σ is 0 and the
-z-score is undefined. Treat as "no outlier" and pass.
+**Zero variance is two different cases**, and collapsing them hides the outlier
+the check most needs to catch. Because `vs-siblings` is leave-one-out, σ is taken
+over the *other* files:
+
+- **All files identical.** The held-out value equals the sibling mean. No outlier;
+  pass.
+- **Siblings identical, held-out file differs.** σ is 0 but the z-score is not
+  undefined — it is infinite, and the file is maximally outlying. This must
+  **fail**, reported as `differs from identical siblings (<value>)`.
+
+The naive reading — "σ is 0, skip the division" — silently passes exactly the
+case where every chapter has two sections and one has twenty. Pinned by
+`test_vs_siblings_flags_a_file_that_differs_from_identical_siblings`.
 
 ## Lexicon rules: coverage and prohibition
 

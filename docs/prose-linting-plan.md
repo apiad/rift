@@ -1,7 +1,7 @@
 # Prose linting — implementation plan
 
 **Spec:** `docs/prose-linting-design.md`
-**Status:** in progress, started 2026-08-26.
+**Status:** complete 2026-08-26. Both slices implemented, 152 tests, ten mutants killed.
 
 Two vertical slices. Each ends with rift able to do something end to end from a
 `.rift.yaml`, not with a layer completed. Slice 1 is the feature that was asked

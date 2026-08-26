@@ -19,22 +19,6 @@ error distinct from "entities missing" — a rule whose *source* is broken shoul
 fail loudly and differently from a rule whose *docs* are incomplete. Worth adding
 a matching exit code, or at minimum a red line that says `could not read X`.
 
-### 🟠 `mention` has no word-boundary option (2026-08-10)
-
-`as: mention` is a plain substring test, so `api` is satisfied by `rapid` and
-`db` by `sandbox-dbg`. Short entity names therefore produce false greens — the
-linter says documented when nothing of the sort is in the doc.
-
-Workaround today is to reach for `table_cell` or `heading` where precision
-matters, which is what `know-how/writing-rules.md` recommends. The real fix is a
-`word_boundary: true` option on `mention` (`mermaid_node` already does the
-`\b`-wrapped thing internally, so the machinery exists).
-
-**Superseded by `docs/prose-linting-design.md` (2026-08-26)**, which specifies it
-as `as: word` — a matcher alongside `mention` rather than a flag on it, because
-the `forbid` rule kind cannot work without word boundaries and needs to *require*
-them rather than opt in. Implement it there, not here.
-
 ### 🔜 Not wired into any CI (2026-08-10)
 
 Nothing runs `rift check` on a push, in this repo or in its one consumer. Until
@@ -49,11 +33,33 @@ so that job has to install it from git.
 ### 🔵 Repo is private — decide whether to publish (2026-08-10)
 
 Created private on 2026-08-10 as the cautious default. There is nothing
-Alex-specific in it: 250 lines, no credentials, no domain knowledge. If it goes
+Alex-specific in it: no credentials, no domain knowledge. If it goes
 public, it wants a PyPI release too, since installing a linter from a git URL is
 most of the friction in adopting one.
 
 ## Done
+
+### ✅ Prose linting: `forbid` and `measure` rule kinds (2026-08-26)
+
+rift went from one rule kind to three. `forbid` reports `file:line` for banned
+words, phrases and regexes; `measure`/`expect` runs 14 stylometric metrics with
+`min`/`max`/`vs-siblings` thresholds; `rift stats` reports the whole table and
+never judges.
+
+Design in `docs/prose-linting-design.md`, execution in
+`docs/prose-linting-plan.md`. Two things worth remembering:
+
+- **Masking blanks, it never deletes.** `forbid` reports line numbers, so an
+  offset into the masked text has to still index the original file. A deleting
+  stripper shifts every line after a code fence and silently reports the wrong
+  one. Pinned by `test_masking_does_not_shift_line_numbers_of_later_prose`.
+- **Masking applies to `forbid` and `measure`, never to `require`.** `require`
+  asks whether something is *documented* and a code fence is documentation.
+
+This closes the old word-boundary item: it shipped as `as: word`, a matcher
+alongside `mention` rather than a flag on it, because `forbid` needs boundaries
+by default rather than by opt-in. `mention` stays permissive — existing rules
+depend on it.
 
 ### ✅ Brought home from the VPS, tested and documented (2026-08-10)
 
