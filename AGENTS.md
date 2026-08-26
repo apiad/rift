@@ -68,10 +68,19 @@ program is filesystem behaviour, and a mocked test here would assert nothing.
 - **[writing-rules](know-how/writing-rules.md)** — reach for it when authoring or
   tuning a `.rift.yaml`: which rule shapes carry their weight, which look good and
   produce only noise, and how to pick a matcher.
+- **[measuring-prose](know-how/measuring-prose.md)** — reach for it before pointing
+  `measure`/`expect` or `rift stats` at any body of writing. Chiefly: strip the
+  renderer's markup or you are measuring apparatus density, not prose — a silent
+  failure that promotes whichever chapter has the most glossary markers to your
+  top outlier.
 
 ## Status
 
-v0.1.0. One real consumer: `repos/ainbox/.rift.yaml` (5 rules). Not on PyPI, not
-wired into any CI. The natural next steps are a word-boundary option for
-`mention` and making an unparseable source file a loud failure instead of a silent
-pass — both listed under "Known gaps" in the README.
+v0.2.0. Three rule kinds: `require` (does it appear), `forbid` (where does it
+appear), `measure`/`expect` (what is this number). Two real consumers —
+`repos/ainbox/.rift.yaml` (5 rules) and `repos/books-tsoc/.rift.yaml` (8 rules,
+which replaced ~450 lines of bespoke Python test code).
+
+Not on PyPI; installed on zion as an editable uv tool (`uv tool install
+--editable`). Not wired into any CI, which is the largest remaining gap — see
+`tasks.md`.

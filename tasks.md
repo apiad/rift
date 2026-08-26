@@ -39,6 +39,29 @@ most of the friction in adopting one.
 
 ## Done
 
+### ✅ Prose linting shipped and proven on a real consumer (2026-08-26)
+
+`forbid` and `measure`/`expect` implemented (see the entry below for the design
+notes), then taken to `repos/books-tsoc`, where eight rules replaced three
+hand-written Python test files. Parity was proven before deleting anything: every
+defect the old suite caught was injected into a throwaway copy and both suites
+run. rift caught all nine and two the old suite missed.
+
+**Writing the first real config found four bugs that unit tests had not.** This is
+the argument for having a consumer, and it is worth repeating on the next feature:
+
+1. `find()` compiled without `MULTILINE` while the `regex:` extractor used it, so
+   `^---$` matched only at start-of-file. `check()` had the same gap one branch
+   over.
+2. `files:` yields bare *stems*, so four different `index.md` collapsed into one
+   entity — dropping one from the build declaration still passed. Fixed with
+   `paths:`.
+3. `in:` accepted only one glob, and a real document set is several.
+4. **Renderer markup was being measured as prose.** `[Tony Hoare]{~hoare-tony}`
+   tokenised as "tony hoare hoare tony". The spec had called for stripping it;
+   only `pattern_count` did. Fixed with `strip:`, and written up in
+   `know-how/measuring-prose.md` because the failure is silent and plausible.
+
 ### ✅ Prose linting: `forbid` and `measure` rule kinds (2026-08-26)
 
 rift went from one rule kind to three. `forbid` reports `file:line` for banned
