@@ -35,6 +35,29 @@ def mask(text: str, include_quotes: bool = False) -> str:
     return out
 
 
+def strip_patterns(text: str, patterns) -> str:
+    """Blank caller-supplied markers before measuring.
+
+    Renderer syntax is not prose. `[Tony Hoare]{~hoare-tony}` tokenises as
+    "tony hoare hoare tony" and a timeline label leaks its whole caption into the
+    sentence stream, so a chapter carrying more markers than its neighbour is
+    measured as having different prose when only its apparatus differs.
+
+    rift knows no renderer: the patterns come from the config. Blanks rather
+    than deletes, for the same reason `mask` does.
+    """
+    if not patterns:
+        return text
+    if isinstance(patterns, str):
+        patterns = [patterns]
+    for pattern in patterns:
+        try:
+            text = re.sub(pattern, _blank, text, flags=re.MULTILINE)
+        except re.error:
+            continue
+    return text
+
+
 def line_of(text: str, pos: int) -> int:
     """The 1-indexed line containing the character at `pos`."""
     return text.count("\n", 0, pos) + 1

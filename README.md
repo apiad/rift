@@ -182,6 +182,24 @@ splitting, so Spanish works unchanged. Readability scores are deliberately absen
 Flesch and its relatives bake in English syllable assumptions *and* a theory of
 good writing.
 
+**`strip:` renderer markup before measuring.** Marker syntax is apparatus, not
+prose, and leaving it in corrupts every metric: `[Tony Hoare]{~hoare-tony}`
+tokenises as *"tony hoare hoare tony"*, and a marker carrying a caption leaks the
+whole caption into the sentence stream. A chapter then measures as having
+different prose when only its markup differs.
+
+```yaml
+    measure:
+      files: "chapters/*.md"
+      metric: sentence-length-cv
+      strip: ['\{[~>][^}]*\}', '\[>[^\]]*\]']
+```
+
+rift knows no renderer — the patterns come from your config. `rift stats` takes
+the same via repeatable `-s/--strip`. Measured on a real book: leaving markers in
+moved one chapter's burstiness from 0.70 to 0.79 and made it read as an outlier
+it was not.
+
 **Apparatus** is counted with a caller-supplied regex, so rift knows nothing about
 your renderer:
 

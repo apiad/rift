@@ -122,3 +122,37 @@ def test_paragraphs_drop_list_blocks_and_tables():
 
 def test_paragraphs_join_wrapped_lines():
     assert paragraphs("one\ntwo\n") == ["one\ntwo"]
+
+
+# --- strip_patterns: caller-supplied markers are not prose ---
+
+from rift.text import strip_patterns
+
+
+def test_strip_patterns_blanks_a_match_preserving_length():
+    src = "a [Tony Hoare]{~hoare-tony} b"
+    out = strip_patterns(src, [r'\{~[^}]*\}'])
+    assert len(out) == len(src)
+    assert "hoare-tony" not in out
+    assert "Tony Hoare" in out
+
+
+def test_strip_patterns_preserves_line_numbers():
+    src = "one\ntwo {~key}\nthree"
+    assert strip_patterns(src, [r'\{~[^}]*\}']).count("\n") == 2
+
+
+def test_strip_patterns_accepts_several_patterns():
+    src = "x {~a} y [>1969: Label here] z"
+    out = strip_patterns(src, [r'\{~[^}]*\}', r'\[>[^\]]*\]'])
+    assert "Label" not in out
+    assert "x" in out and "z" in out
+
+
+def test_strip_patterns_with_no_patterns_is_identity():
+    assert strip_patterns("unchanged", []) == "unchanged"
+    assert strip_patterns("unchanged", None) == "unchanged"
+
+
+def test_strip_ignores_an_invalid_regex_rather_than_crashing():
+    assert strip_patterns("text", ["([unclosed"]) == "text"

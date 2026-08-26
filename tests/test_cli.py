@@ -434,3 +434,30 @@ def test_measure_files_accepts_a_list_of_globs(repo, write):
     result = runner.invoke(main, ["check", str(repo)])
     assert result.exit_code == 1
     assert "ch02.md" in result.output
+
+
+def test_strip_changes_a_metric_by_removing_marker_text(repo, write):
+    """Marker text inflates token counts and merges sentences; strip removes it."""
+    body = "Short one. " + "[Tony Hoare]{~hoare-tony} " * 30 + "And a close.\n"
+    write("chapters/ch01.md", body)
+    config(write, {
+        "name": "with markers",
+        "measure": {"files": "chapters/*.md", "metric": "mean-sentence-length"},
+        "expect": {"max": 100},
+    })
+    assert runner.invoke(main, ["check", str(repo)]).exit_code == 1
+
+    config(write, {
+        "name": "markers stripped",
+        "measure": {"files": "chapters/*.md", "metric": "mean-sentence-length",
+                    "strip": [r'\{~[^}]*\}']},
+        "expect": {"max": 100},
+    })
+    assert runner.invoke(main, ["check", str(repo)]).exit_code == 0
+
+
+def test_stats_accepts_repeatable_strip(repo, write):
+    write("chapters/ch01.md", "Prose here. [X]{~key} More prose.\n")
+    result = runner.invoke(main, ["stats", "chapters/*.md", "-p", str(repo),
+                                  "-s", r'\{~[^}]*\}'])
+    assert result.exit_code == 0

@@ -8,6 +8,7 @@ from rich.table import Table
 
 from . import measure
 from .extractor import extract
+from .text import strip_patterns
 from .matcher import check, find, resolve_globs
 
 console = Console()
@@ -57,6 +58,12 @@ def _values(root: Path, spec: dict) -> dict:
             texts[f] = f.read_text()
         except Exception:
             continue
+
+    # Renderer markers are apparatus, not prose. Stripped before every metric,
+    # so a chapter is not measured as different when only its markup differs.
+    strip = spec.get("strip")
+    if strip:
+        texts = {f: strip_patterns(t, strip) for f, t in texts.items()}
 
     if "pattern" in spec:
         return {f: measure.pattern_count(t, spec["pattern"], spec.get("per")) for f, t in texts.items()}
@@ -252,7 +259,8 @@ def list_cmd(path, config, rule):
 @click.argument("files")
 @click.option("--path", "-p", default=".", type=click.Path(exists=True), help="Project root")
 @click.option("--metric", "-m", default=None, help="Filter to metrics matching a substring")
-def stats_cmd(files, path, metric):
+@click.option("--strip", "-s", multiple=True, help="Regex of renderer markup to blank before measuring (repeatable)")
+def stats_cmd(files, path, metric, strip):
     """Report the metric table for a file set.
 
     Never judges and always exits 0. This is the agent-facing surface: it is how
@@ -260,7 +268,7 @@ def stats_cmd(files, path, metric):
     written a rule first.
     """
     root = Path(path).resolve()
-    spec = {"files": files}
+    spec = {"files": files, "strip": list(strip)}
 
     names = [n for n in measure.METRICS if not metric or metric in n]
     if not metric or metric in "burrows-delta":
