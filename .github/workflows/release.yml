@@ -1,0 +1,94 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install (lockfile must be current)
+        run: uv sync --locked
+
+      # The gate. A release workflow that does not run the suite is theatre:
+      # it would happily publish a tag whose tests are red.
+      - name: Tests
+        run: uv run pytest -q
+
+      # Catches the mistake that is easiest to make by hand — tagging vX.Y.Z
+      # while pyproject still says something else. The lockfile is covered by
+      # --locked above.
+      - name: Tag must match the version in pyproject.toml
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          declared=$(uv run python -c "import tomllib,pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
+          echo "tag=$tag  pyproject=$declared"
+          if [ "$tag" != "$declared" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match pyproject version ${declared}"
+            exit 1
+          fi
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      # Prefer the hand-written CHANGELOG section over generated notes. Falls
+      # back to --generate-notes when the version has no section, rather than
+      # publishing an empty body.
+      - name: Extract release notes from CHANGELOG
+        id: notes
+        run: |
+          set -euo pipefail
+          python3 - "$GITHUB_REF_NAME" <<'PY'
+          import pathlib, re, sys, os
+          tag = sys.argv[1]
+          path = pathlib.Path("CHANGELOG.md")
+          body = ""
+          if path.exists():
+              text = path.read_text()
+              m = re.search(
+                  rf"^## \[{re.escape(tag)}\][^\n]*\n(.*?)(?=^## \[|\Z)",
+                  text, re.M | re.S,
+              )
+              if m:
+                  body = m.group(1).strip()
+          pathlib.Path("RELEASE_NOTES.md").write_text(body)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+              fh.write(f"found={'true' if body else 'false'}\n")
+          PY
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          if [ "${{ steps.notes.outputs.found }}" = "true" ]; then
+            notes=(--notes-file RELEASE_NOTES.md)
+          else
+            echo "::warning::no CHANGELOG section for ${tag}; falling back to generated notes"
+            notes=(--generate-notes)
+          fi
+
+          # Idempotent: a re-run against an existing tag updates rather than fails.
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" --title "$tag" "${notes[@]}"
+            gh release upload "$tag" dist/* --clobber
+          else
+            gh release create "$tag" --title "$tag" "${notes[@]}" dist/*
+          fi
+
+          gh release view "$tag" --json tagName,isDraft,url --jq '"published \(.tagName) draft=\(.isDraft) \(.url)"'

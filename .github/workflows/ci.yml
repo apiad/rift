@@ -1,0 +1,37 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The floor declared in pyproject, and the current release.
+        python: ["3.11", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # --locked fails if pyproject and uv.lock disagree. This is not
+      # housekeeping: v0.2.0 was tagged with the lock still pinned at 0.1.0, so
+      # `uv sync --locked` was broken on the released tag.
+      - name: Install (lockfile must be current)
+        run: uv sync --locked --python ${{ matrix.python }}
+
+      - name: Tests
+        run: uv run pytest -q
