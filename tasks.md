@@ -30,6 +30,11 @@ matters, which is what `know-how/writing-rules.md` recommends. The real fix is a
 `word_boundary: true` option on `mention` (`mermaid_node` already does the
 `\b`-wrapped thing internally, so the machinery exists).
 
+**Superseded by `docs/prose-linting-design.md` (2026-08-26)**, which specifies it
+as `as: word` — a matcher alongside `mention` rather than a flag on it, because
+the `forbid` rule kind cannot work without word boundaries and needs to *require*
+them rather than opt in. Implement it there, not here.
+
 ### 🔜 Not wired into any CI (2026-08-10)
 
 Nothing runs `rift check` on a push, in this repo or in its one consumer. Until

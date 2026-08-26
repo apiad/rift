@@ -30,8 +30,10 @@ src/rift/cli.py         check / list / init + exit codes  (~117 lines)
 tests/                  40 tests, one file per module
 ```
 
-It is 250 lines. Keep it that way. This is a tool whose value is that you can
-read all of it in ten minutes and believe its output.
+One concern per module, and each module readable on its own. There is no line
+budget — rift grows when it earns it. What must not degrade is the property that
+makes it worth running: you can read the module behind any given rule and believe
+its output.
 
 ## The rule that matters most here
 
