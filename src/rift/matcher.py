@@ -98,6 +98,24 @@ def _exclusions(phrases, flags: int) -> list[re.Pattern]:
     return [re.compile(re.escape(p), flags) for p in phrases]
 
 
+def _word_pattern(entity: str) -> str | None:
+    """A literal phrase, `\\b`-wrapped, tolerating any whitespace run inside it.
+
+    The single space in "not merely" was a literal space, so the phrase was
+    invisible the moment a renderer or an author wrapped the line between its
+    two words. Whitespace inside the entity becomes `\\s+`; the boundaries stay
+    exact, so "not merely" still does not match "not merelyish".
+
+    `\\s+` spans a blank line too, so a phrase whose first word ends a paragraph
+    and whose second opens the next reports a site. Rare, and narrowing it costs
+    a pattern nobody can read — documented in the README instead.
+    """
+    parts = entity.split()
+    if not parts:
+        return None
+    return r'\b' + r'\s+'.join(re.escape(p) for p in parts) + r'\b'
+
+
 def _pattern_for(entity: str, as_type: str, wrap: str | None = None) -> str | None:
     """The regex source for a literal-or-pattern entity, or None if unsupported.
 
@@ -109,7 +127,7 @@ def _pattern_for(entity: str, as_type: str, wrap: str | None = None) -> str | No
     if wrap:
         return wrap.replace("${entity}", re.escape(entity))
     if as_type == "word":
-        return rf'\b{re.escape(entity)}\b'
+        return _word_pattern(entity)
     if as_type == "regex":
         return entity
     if as_type == "mention":
@@ -132,7 +150,8 @@ def _matches(entity: str, as_type: str, text: str, case_insensitive: bool = Fals
         return entity in text
 
     if as_type == "word":
-        return bool(re.search(rf'\b{esc}\b', text))
+        pattern = _word_pattern(entity)
+        return bool(pattern) and bool(re.search(pattern, text))
 
     if as_type == "regex":
         try:

@@ -4,6 +4,16 @@ All notable changes to this project are documented here. Format: Keep a Changelo
 
 ## [Unreleased]
 
+### Changed
+
+- **`as: word` tolerates a line wrap inside a multi-word entity.** The space in
+  `not merely` was a literal space, so the phrase was invisible the moment the
+  line broke between its two words; whitespace inside an entity now matches any
+  run. This catches strictly more than before, which is the correct direction
+  for a ban but will move counts in a hard-wrapped repo. Boundaries are
+  unchanged — `not merely` still does not match `not merelyish`. Fixed at both
+  sites: `forbid` reads `_pattern_for`, `require` has its own `as: word` branch.
+
 ### Features
 
 - **`forbid.exclude`** — literal phrases whose occurrences are exempt from an

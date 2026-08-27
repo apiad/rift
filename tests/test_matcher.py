@@ -294,3 +294,33 @@ def test_wrap_works_in_find_and_reports_sites(repo, write):
     write("docs/a.md", "one [~cpu]\ntwo {~cpu}\n")
     sites = find(repo, "cpu", {"in": "docs/*.md", "wrap": r'[\[{]~${entity}[\]}]'})
     assert [line for _, line, _ in sites] == [1, 2]
+
+
+# --- whitespace-tolerant literal matching (slice A) ---
+
+
+def test_word_matches_a_phrase_broken_across_a_line(repo, write):
+    """A hard-wrapped document must not hide a banned phrase.
+
+    `books-tsoc` writes one paragraph per line and was never bitten by this;
+    `enciclopedia` is hard-wrapped and would be.
+    """
+    write("docs/a.md", "the claim is not\nmerely that it is hard\n")
+    sites = find(repo, "not merely", FORBID)
+    assert [line for _, line, _ in sites] == [1]
+
+
+def test_require_word_also_matches_across_a_line(repo, write):
+    """The same fix, at the second site.
+
+    `find` reads `_pattern_for`; `check` has its own `as: word` branch. Fixing
+    one leaves the other broken in exactly the same way.
+    """
+    write("docs/design.md", "a rich\nhistory of computing\n")
+    assert check(repo, "rich history of", WORD) is True
+
+
+def test_word_still_respects_boundaries_across_a_line(repo, write):
+    """Tolerating the wrap must not loosen the ends of the phrase."""
+    write("docs/a.md", "the claim is not\nmerelyish and vague\n")
+    assert find(repo, "not merely", FORBID) == []

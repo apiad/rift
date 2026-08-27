@@ -95,7 +95,7 @@ and `measure.files` take the same string-or-list.
 |---|---|
 | `mention` (default) | appears anywhere as a **plain substring**. No word boundary — `api` is satisfied by `rapid`. Permissive by design. |
 | `wrap: <pattern>` | not an `as:` value but an override for it: the escaped entity is substituted into your pattern at `${entity}`. Use it to ask about a *marked* term rather than a bare word — `wrap: '[\[{]~${entity}[\]}]'` matches `[~cpu]` and `{~cpu}` but not the word "cpu". |
-| `word` | appears as a whole word (`\b`-wrapped, literal). **The default for `forbid`** — without it, banning `just` flags `adjusted`. |
+| `word` | appears as a whole word (`\b`-wrapped, literal). **The default for `forbid`** — without it, banning `just` flags `adjusted`. Whitespace *inside* a multi-word entity matches any run, so `not merely` is still found when a hard-wrapped line splits it. |
 | `regex` | the entity *is* a pattern, matched as written. |
 | `heading` | appears in a heading of any level (`#`–`######`). |
 | `heading_N` | appears in a heading of exactly level N. `heading_2` matches `##` and rejects `#` and `###`. |
@@ -259,6 +259,10 @@ Both can express "this text should be rare". Pick by what you need back: a
 - **A roster entity must be the string that actually appears.** `Dijkstra` passes
   where `Edsger W. Dijkstra` fails; there is no alias mechanism. Roster the
   surname, or use `as: regex`.
+- **A multi-word `as: word` entity spans a paragraph break.** Whitespace inside
+  the entity compiles to `\s+`, which does not stop at a blank line, so a phrase
+  whose first word ends a paragraph and whose second opens the next reports a
+  site. Rare, and narrowing it costs a pattern nobody can read.
 - **Sentence splitting is deliberately crude.** `Ph.D.` over-splits. Every file in
   a set is over-split by the same rule, so comparisons stay valid where the
   absolute count does not — and no metric here depends on that count being right.
