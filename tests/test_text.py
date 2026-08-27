@@ -156,3 +156,50 @@ def test_strip_patterns_with_no_patterns_is_identity():
 
 def test_strip_ignores_an_invalid_regex_rather_than_crashing():
     assert strip_patterns("text", ["([unclosed"]) == "text"
+
+
+# --- spans (slice C) ---
+
+from rift.text import (
+    paragraph_spans,
+    paragraphs,
+    sentence_spans,
+    sentence_start_offsets,
+    sentences,
+    tokens,
+)
+
+
+def test_paragraph_spans_slice_back_to_the_paragraphs():
+    """The span API and the string API must not drift apart."""
+    doc = "# Heading\n\nOne line.\nAnd another.\n\n- a list item\n\nLast para.\n"
+    assert [doc[s:e] for s, e in paragraph_spans(doc)] == paragraphs(doc)
+
+
+def test_sentence_spans_slice_back_to_the_sentences():
+    doc = "One two three. Four five six.\n\nSeven eight.\n"
+    assert [tokens(doc[s:e]) for s, e in sentence_spans(doc)] == sentences(doc)
+
+
+def test_sentence_start_offsets_finds_a_sentence_beginning_mid_line():
+    """The reason `as: sentence_start` cannot be a regex.
+
+    Every pattern in a rift config anchors `^` per line, and the second
+    sentence here does not begin one.
+    """
+    doc = "Alpha runs fast. Beta walks slow.\n"
+    assert sentence_start_offsets(doc) == {0, doc.index("Beta")}
+
+
+def test_sentence_start_offsets_skips_leading_whitespace():
+    """An indented paragraph opens its span on whitespace, not on its first word.
+
+    The gap *between* sentences is not the case to test: `_TERMINATOR` is
+    `[.!?...]+\\s+`, so it already consumes the spaces after a full stop and the
+    second span starts at the word either way. A fixture built on that gap
+    passes against a matcher that returns raw span starts, and this one does
+    not.
+    """
+    doc = "   Alpha runs fast.\n"
+    assert sentence_start_offsets(doc) == {doc.index("Alpha")}
+    assert 0 not in sentence_start_offsets(doc)

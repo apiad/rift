@@ -16,6 +16,13 @@ All notable changes to this project are documented here. Format: Keep a Changelo
 
 ### Features
 
+- **`as: sentence_start` matcher** — bans a word only where it opens a sentence,
+  which no config could express before: every pattern anchors `^` per line, and a
+  sentence beginning mid-line has no anchor. Implemented as the ordinary literal
+  match plus a span filter, so there is no second way to match a literal.
+  `case_insensitive` does **not** fold the document for this matcher — splitting
+  keys on the capital after the terminator, so folding would erase every boundary
+  and the matcher would find nothing.
 - **`repeated-sentence-openers` metric** — consecutive sentences opening on the
   same token, per 1000 tokens. Adjacency is the claim: a word that opens two
   sentences with another between them is not the tic, so it counts pairs rather

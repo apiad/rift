@@ -83,38 +83,75 @@ def sentences(text: str) -> list[list[str]]:
     does not. No metric here may depend on the absolute count being right.
     """
     out = []
-    for para in paragraphs(text):
-        for chunk in _split_sentences(para):
-            toks = tokens(chunk)
-            if toks:
-                out.append(toks)
+    for start, end in sentence_spans(text):
+        toks = tokens(text[start:end])
+        if toks:
+            out.append(toks)
     return out
+
+
+def sentence_spans(text: str) -> list[tuple[int, int]]:
+    """The same sentences as `sentences`, as offsets into `text`.
+
+    Offsets are what `forbid` needs and token lists cannot give: a site has to
+    report a line, and a line comes from an offset.
+    """
+    out = []
+    for para_start, para_end in paragraph_spans(text):
+        out.extend(_split_sentence_spans(text[para_start:para_end], para_start))
+    return out
+
+
+def sentence_start_offsets(text: str) -> set[int]:
+    """The offset of the first word character of each sentence.
+
+    Not the offset of the span, which may open on whitespace — "Alpha runs.
+    Beta walks." puts a space in front of "Beta", and a matcher comparing
+    against the span start would never fire.
+    """
+    starts = set()
+    for start, end in sentence_spans(text):
+        m = _TOKEN.search(text, start, end)
+        if m:
+            starts.add(m.start())
+    return starts
 
 
 def paragraphs(text: str) -> list[str]:
     """Runs of non-empty lines delimited by blank lines, block elements removed."""
-    blocks, current = [], []
+    return [text[start:end] for start, end in paragraph_spans(text)]
+
+
+def paragraph_spans(text: str) -> list[tuple[int, int]]:
+    """The same runs as `paragraphs`, as offsets into `text`."""
+    spans: list[tuple[int, int]] = []
+    start = end = None
+    pos = 0
     for line in text.split("\n"):
+        line_start, line_end = pos, pos + len(line)
+        pos = line_end + 1  # the "\n" that split() consumed
         if not line.strip() or _BLOCK.match(line):
-            if current:
-                blocks.append("\n".join(current))
-                current = []
+            if start is not None:
+                spans.append((start, end))
+                start = None
             continue
-        current.append(line)
-    if current:
-        blocks.append("\n".join(current))
-    return blocks
+        if start is None:
+            start = line_start
+        end = line_end
+    if start is not None:
+        spans.append((start, end))
+    return spans
 
 
-def _split_sentences(text: str) -> list[str]:
+def _split_sentence_spans(text: str, base: int = 0) -> list[tuple[int, int]]:
     parts, start = [], 0
     for m in _TERMINATOR.finditer(text):
         nxt = text[m.end():m.end() + 1]
         if nxt and (nxt.isupper() or nxt.isdigit()):
-            parts.append(text[start:m.end()])
+            parts.append((start, m.end()))
             start = m.end()
-    parts.append(text[start:])
-    return [p for p in parts if p.strip()]
+    parts.append((start, len(text)))
+    return [(base + s, base + e) for s, e in parts if text[s:e].strip()]
 
 
 def _blank(match: re.Match) -> str:

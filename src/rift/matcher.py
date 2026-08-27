@@ -2,7 +2,7 @@ import re
 from pathlib import Path
 
 from .extractor import resolve_globs
-from .text import line_of, mask
+from .text import line_of, mask, sentence_start_offsets
 
 
 def check(root: Path, entity: str, require: dict) -> bool:
@@ -22,8 +22,13 @@ def check(root: Path, entity: str, require: dict) -> bool:
 
     # A regex entity is a pattern, not a string: lowercasing it would rewrite
     # character classes. It gets the IGNORECASE flag instead.
+    #
+    # `sentence_start` is excluded for a different reason: sentence splitting
+    # keys on the capital that follows the terminator, so folding the document
+    # to lowercase erases every boundary in it and the matcher finds nothing.
+    # It gets IGNORECASE too.
     wrap = require.get("wrap")
-    fold = case_insensitive and as_type != "regex" and not wrap
+    fold = case_insensitive and as_type not in ("regex", "sentence_start") and not wrap
     if fold:
         entity = entity.lower()
 
@@ -73,8 +78,11 @@ def find(root: Path, entity: str, forbid: dict) -> list[tuple[Path, int, str]]:
         except Exception:
             continue
         exempt = [span for e in exclusions for span in (m.span() for m in e.finditer(text))]
+        starts = sentence_start_offsets(text) if as_type == "sentence_start" else None
         for m in compiled.finditer(text):
             if any(s <= m.start() and m.end() <= e for s, e in exempt):
+                continue
+            if starts is not None and m.start() not in starts:
                 continue
             sites.append((doc_file, line_of(text, m.start()), entity))
     return sites
@@ -126,7 +134,10 @@ def _pattern_for(entity: str, as_type: str, wrap: str | None = None) -> str | No
     """
     if wrap:
         return wrap.replace("${entity}", re.escape(entity))
-    if as_type == "word":
+    if as_type in ("word", "sentence_start"):
+        # `sentence_start` is a literal match plus a filter, not a pattern of its
+        # own: sentence position needs segmentation, which no regex over the raw
+        # text can express. `find` applies the filter.
         return _word_pattern(entity)
     if as_type == "regex":
         return entity
@@ -152,6 +163,14 @@ def _matches(entity: str, as_type: str, text: str, case_insensitive: bool = Fals
     if as_type == "word":
         pattern = _word_pattern(entity)
         return bool(pattern) and bool(re.search(pattern, text))
+
+    if as_type == "sentence_start":
+        pattern = _word_pattern(entity)
+        if not pattern:
+            return False
+        flags = re.MULTILINE | (re.IGNORECASE if case_insensitive else 0)
+        starts = sentence_start_offsets(text)
+        return any(m.start() in starts for m in re.finditer(pattern, text, flags))
 
     if as_type == "regex":
         try:

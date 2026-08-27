@@ -97,6 +97,7 @@ and `measure.files` take the same string-or-list.
 | `wrap: <pattern>` | not an `as:` value but an override for it: the escaped entity is substituted into your pattern at `${entity}`. Use it to ask about a *marked* term rather than a bare word — `wrap: '[\[{]~${entity}[\]}]'` matches `[~cpu]` and `{~cpu}` but not the word "cpu". |
 | `word` | appears as a whole word (`\b`-wrapped, literal). **The default for `forbid`** — without it, banning `just` flags `adjusted`. Whitespace *inside* a multi-word entity matches any run, so `not merely` is still found when a hard-wrapped line splits it. |
 | `regex` | the entity *is* a pattern, matched as written. |
+| `sentence_start` | appears as a whole word **opening a sentence**. Not expressible as `as: regex`: every pattern in a config anchors `^` per *line*, and a sentence that begins mid-line has no anchor at all. Because splitting is crude, a spurious boundary yields a **false** site — never a missed one. |
 | `heading` | appears in a heading of any level (`#`–`######`). |
 | `heading_N` | appears in a heading of exactly level N. `heading_2` matches `##` and rejects `#` and `###`. |
 | `table_cell` | appears inside a single `\|` … `\|` cell on one line. |
@@ -266,6 +267,9 @@ Both can express "this text should be rare". Pick by what you need back: a
 - **Sentence splitting is deliberately crude.** `Ph.D.` over-splits. Every file in
   a set is over-split by the same rule, so comparisons stay valid where the
   absolute count does not — and no metric here depends on that count being right.
+  `as: sentence_start` is the one consumer that pays for it: a spurious boundary
+  makes the word after it look sentence-initial, so the failure mode is a **false
+  site**, never a missed one.
 
 ## Development
 

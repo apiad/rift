@@ -324,3 +324,52 @@ def test_word_still_respects_boundaries_across_a_line(repo, write):
     """Tolerating the wrap must not loosen the ends of the phrase."""
     write("docs/a.md", "the claim is not\nmerelyish and vague\n")
     assert find(repo, "not merely", FORBID) == []
+
+
+# --- as: sentence_start (slice C) ---
+
+SENTENCE_START = {"in": "docs/*.md", "as": "sentence_start"}
+
+
+def test_sentence_start_ignores_a_mid_sentence_occurrence(repo, write):
+    """THE test for this feature.
+
+    A test that only asserts the sentence-initial site is found would pass
+    against a plain `as: word` implementation and prove nothing.
+    """
+    write("docs/a.md", "The result was however quite different.\n")
+    assert find(repo, "however", SENTENCE_START) == []
+
+
+def test_sentence_start_finds_a_sentence_that_does_not_open_a_line(repo, write):
+    """Not expressible as a regex: `^` anchors per line, and this one is mid-line."""
+    write("docs/a.md", "Alpha runs fast. However, beta walks slow.\n")
+    sites = find(repo, "However", SENTENCE_START)
+    assert [line for _, line, _ in sites] == [1]
+
+
+def test_sentence_start_reports_both_kinds_of_site_once_each(repo, write):
+    write("docs/a.md", "However it began.\n\nIt ended. However it began again.\n")
+    sites = find(repo, "however", {**SENTENCE_START, "case_insensitive": True})
+    assert [line for _, line, _ in sites] == [1, 3]
+
+
+def test_sentence_start_is_masked_like_any_forbid(repo, write):
+    write("docs/a.md", "```\nHowever this is code.\n```\n\nHowever this is prose.\n")
+    sites = find(repo, "However", SENTENCE_START)
+    assert [line for _, line, _ in sites] == [5]
+
+
+def test_require_sentence_start_survives_case_insensitive(repo, write):
+    """Folding the document to lowercase would destroy every sentence boundary,
+    since splitting keys on the following capital. The flag must not fold."""
+    write("docs/a.md", "Alpha runs fast. However, beta walks slow.\n")
+    assert check(repo, "however", {**SENTENCE_START, "case_insensitive": True}) is True
+    assert check(repo, "beta", {**SENTENCE_START, "case_insensitive": True}) is False
+
+
+def test_sentence_start_finds_an_indented_paragraph_opener(repo, write):
+    """The site is the word, not the whitespace the paragraph span opens on."""
+    write("docs/a.md", "   However it began.\n")
+    sites = find(repo, "However", SENTENCE_START)
+    assert [line for _, line, _ in sites] == [1]
