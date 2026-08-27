@@ -1,0 +1,172 @@
+# rift, linted by rift.
+#
+# The rules here are the ones rift recommends, pointed at rift. Two things that
+# are deliberately absent are as informative as the ones present — see the note
+# at the bottom before adding either.
+#
+# Everything starts at `severity: warning`, per know-how/writing-rules.md: run
+# `rift list`, read every ✗, and promote a rule to `error` only once its list is
+# empty for reasons you agree with. A mostly-red rule trains everyone to skim
+# past red.
+
+_anchors:
+  docs: &docs
+    - "README.md"
+    - "AGENTS.md"
+    - "know-how/*.md"
+    - "docs/*.md"
+  prose: &prose
+    - "README.md"
+    - "AGENTS.md"
+    - "know-how/*.md"
+
+rules:
+  # ------------------------------------------------------- API rosters ----
+  # Check the roster, not the wiring. Each of these extracts a vocabulary the
+  # code actually dispatches on, so adding a kind, matcher, key or metric and
+  # forgetting the docs is exactly what fails. Functions are wiring and are not
+  # rostered here; the modules rule below covers them at the level that matters.
+
+  - name: "every rule kind is documented"
+    severity: warning
+    extract:
+      file: "src/rift/cli.py"
+      regex: 'kind == "([a-z]+)"'
+    require:
+      in: "README.md"
+      as: table_cell
+
+  - name: "every matcher is documented"
+    severity: warning
+    extract:
+      file: "src/rift/matcher.py"
+      regex: 'as_type == "([a-z_]+)"'
+    require:
+      in: "README.md"
+      as: table_cell
+
+  # Two idioms, so an alternation — and the unmatched branch's None is skipped
+  # only because `regex:` takes the first group that *matched*. Before b4c9f2b
+  # this rule would have reported a silently partial roster as a pass.
+  - name: "every extractor key is documented"
+    severity: warning
+    extract:
+      file: "src/rift/extractor.py"
+      regex: '(?:"([a-z_]+)" in config|config\.get\("([a-z_]+)")'
+    require:
+      in: "README.md"
+      as: table_cell
+
+  - name: "every expect predicate is documented"
+    severity: warning
+    extract:
+      file: "src/rift/cli.py"
+      regex: '(?:"([a-z-]+)" in expect|expect\.get\("([a-z-]+)")'
+    require:
+      in: "README.md"
+      as: table_cell
+
+  - name: "every metric is documented"
+    severity: warning
+    extract:
+      file: "src/rift/measure.py"
+      regex: '^\s+"([a-z-]+)": '
+    require:
+      in: "README.md"
+      as: table_cell
+
+  - name: "every CLI command has its own section"
+    severity: warning
+    extract:
+      file: "src/rift/cli.py"
+      regex: '@main\.command\("([a-z]+)"\)'
+    require:
+      in: "README.md"
+      as: heading
+
+  # `paths:` rather than `files:`, which yields bare stems and would collapse
+  # two modules sharing a name. The `[a-z]*` glob skips `__init__.py`, which is
+  # empty and would be noise to describe.
+  - name: "every module is described in AGENTS.md"
+    severity: warning
+    extract:
+      paths: "src/rift/[a-z]*.py"
+    require:
+      in: "AGENTS.md"
+      as: mention
+
+  # ---------------------------------------------------- claims vs reality ----
+
+  # The sharpest rule rift has, and the most neglected: docs that describe files
+  # nobody ever wrote, or that were renamed out from under them.
+  #
+  # Backtick-delimited only, and that is not fussiness. `require` reads the
+  # document UNMASKED — a code fence is documentation — so an unscoped pattern
+  # also matches the illustrative paths inside config examples, and
+  # `docs/design.md` in the README is an example rather than a claim about this
+  # repo. Backticks are how this repo writes a claim.
+  - name: "every path named in the docs exists"
+    severity: warning
+    extract:
+      file: *docs
+      regex: '`((?:src/rift|know-how|docs|tests)/[\w./-]+\.(?:py|md|yaml|toml))`'
+    require:
+      exists: true
+
+  # Catches the drift that was live in this repo on 2026-08-27: AGENTS.md
+  # claimed v0.2.0 while pyproject said 0.3.0, and nothing noticed for a month.
+  - name: "the version in AGENTS.md matches pyproject"
+    severity: warning
+    extract:
+      file: "pyproject.toml"
+      regex: '^version = "([^"]+)"'
+    require:
+      in: "AGENTS.md"
+      as: mention
+
+  # ------------------------------------------------------------- prose ----
+  # rift ships no banned list; this one is rift's own taste, which is where
+  # taste belongs.
+
+  - name: "no AI-tic phrasing"
+    severity: warning
+    extract:
+      list:
+        - "delve"
+        - "tapestry"
+        - "rich history"
+        - "it is important to note"
+        - "in today's fast-paced"
+        - "let's dive in"
+        - "game changer"
+        - "seamlessly"
+        - "leverage"
+        - "robust solution"
+    forbid:
+      in: *prose
+      as: word
+      case_insensitive: true
+
+  - name: "no throat-clearing sentence openers"
+    severity: warning
+    extract:
+      list: ["However", "Moreover", "Furthermore", "Additionally", "Notably"]
+    forbid:
+      in: *prose
+      as: sentence_start
+      case_insensitive: true
+
+# ---------------------------------------------------------------------------
+# Two of rift's own features are deliberately NOT used here, because forcing a
+# feature onto a repo that does not need it is how a config starts lying.
+#
+# `measure` / `vs-siblings` — needs at least four files in a set to judge, and
+# rift has two know-how docs. The rule would sit permanently yellow reporting
+# "too small to judge", and a rule that is always yellow trains you to ignore
+# yellow. Revisit at four.
+#
+# `permit` — reads MASKED prose, so inline code and fences are blank to it. Every
+# identifier in this README lives in backticks, which makes `permit` structurally
+# unable to see the thing it would be asked about. `require` is the tool for API
+# coverage, and that is why `require` alone reads unmasked. Documented in the
+# README under `permit`.

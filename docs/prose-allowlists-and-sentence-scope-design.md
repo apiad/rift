@@ -272,9 +272,10 @@ Per `AGENTS.md`, which is not negotiable here:
 
 ---
 
-*This design absorbed `docs/permit-and-sentence-scope-design.md`, an independent
-spec for the same feature written in a parallel session 46 seconds earlier
-(`6c9109e`). The two reached the same conclusions; that one contributed the
+*This design absorbed an independent spec for the same feature, written in a
+parallel session and committed 46 seconds earlier as `6c9109e` — cited by commit
+rather than by path, since the file itself is gone and a dead path is a poor
+citation. The two reached the same conclusions; that one contributed the
 `strip:` requirement and the empty-set polarity above, both of which this one had
 missed, and both of which turned out to be real gaps in the implementation. It
 was deleted rather than left to contradict this one about what had shipped.*
