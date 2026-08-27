@@ -1,6 +1,6 @@
 # Prose allowlists and sentence scope — design
 
-**Status:** approved 2026-08-27, not yet implemented.
+**Status:** implemented 2026-08-27, unreleased on `main`.
 **Scope:** one new rule kind (`permit`), one new matcher (`as: sentence_start`),
 one new metric (`repeated-sentence-openers`), and one fix to literal matching
 (whitespace inside a multi-word entity). Target release `v0.4.0`.

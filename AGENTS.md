@@ -24,10 +24,12 @@ commit messages, tests, docs, know-how. No exceptions.
 ## Layout
 
 ```
-src/rift/extractor.py   what to pull out of the codebase  (~80 lines)
-src/rift/matcher.py     what counts as "documented"       (~55 lines)
-src/rift/cli.py         check / list / init + exit codes  (~117 lines)
-tests/                  40 tests, one file per module
+src/rift/extractor.py   what to pull out of the codebase
+src/rift/matcher.py     what counts as "documented" — and what is banned
+src/rift/text.py        masking, tokens, sentences, and their spans
+src/rift/measure.py     text in, numbers out
+src/rift/cli.py         check / list / stats / init + exit codes
+tests/                  one file per module
 ```
 
 One concern per module, and each module readable on its own. There is no line
@@ -76,9 +78,10 @@ program is filesystem behaviour, and a mocked test here would assert nothing.
 
 ## Status
 
-v0.2.0. Three rule kinds: `require` (does it appear), `forbid` (where does it
-appear), `measure`/`expect` (what is this number). Two real consumers —
-`repos/ainbox/.rift.yaml` (5 rules) and `repos/books-tsoc/.rift.yaml` (8 rules,
+v0.3.0, with `v0.4.0` unreleased on `main`. Four rule kinds: `require` (does it
+appear), `forbid` (where does it appear), `permit` (what appears that should
+not), `measure`/`expect` (what is this number). Two real consumers —
+`repos/ainbox/.rift.yaml` (5 rules) and `repos/books-tsoc/.rift.yaml` (25 rules,
 which replaced ~450 lines of bespoke Python test code).
 
 CI runs the suite on push and PR (3.11, 3.13); a `v*` tag runs `release.yml`,
