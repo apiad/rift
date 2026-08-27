@@ -168,11 +168,13 @@ program is filesystem behaviour, and a mocked test here would assert nothing.
 
 ## Status
 
-v0.5.1. Four rule kinds: `require` (does it
+v0.6.0. Four rule kinds: `require` (does it
 appear), `forbid` (where does it appear), `permit` (what appears that should
-not), `measure`/`expect` (what is this number). Two real consumers —
-`repos/ainbox/.rift.yaml` (5 rules) and `repos/books-tsoc/.rift.yaml` (25 rules,
-which replaced ~450 lines of bespoke Python test code).
+not), `measure`/`expect` (what is this number). Three of the four take a
+`zone:` — part of a file rather than all of it; `require` does not, and the
+README says why. Two real consumers — `repos/ainbox/.rift.yaml` (5 rules) and
+`repos/books-tsoc/.rift.yaml` (25 rules, which replaced ~450 lines of bespoke
+Python test code).
 
 CI runs the suite on push and PR (3.11, 3.13); a `v*` tag runs `release.yml`,
 which gates on the suite, checks the tag matches `pyproject.toml`, builds

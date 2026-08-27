@@ -4,6 +4,87 @@ All notable changes to this project are documented here. Format: Keep a Changelo
 
 ## [Unreleased]
 
+## [v0.6.0] - 2026-08-27
+
+### Features
+
+- **`zone:` restricts a rule to part of a document.** Available on `forbid`,
+  `permit` and `measure`, in two forms: structural
+  (`{unit: paragraph|section, index: [0, -1]}`, Python index semantics) and
+  delimited (`{after: <regex>, before: <regex>}`, first match wins for each
+  bound, bounds excluded from the region). A rule carries exactly one form.
+
+  Surveying four books' style guides turned up about 206 stated writing rules,
+  and one missing primitive was requested by all four independently — always the
+  same sentence: *this rule applies to part of the file, not the whole of it.*
+  Nine requests are served here, including the two that motivated zoning
+  `measure`: **bold at most once per section**, and **the opening paragraph is
+  45–70 words**.
+
+  Three details are the design rather than the implementation:
+
+  - **Zones resolve after masking and before `strip:`.** Resolving on raw text
+    splits `unit: section` on a `##` inside a code fence — the precise failure
+    `measure.py` documents itself as avoiding — and stripping first blanks the
+    renderer macro a delimited bound is usually written against, making every
+    zone in that rule unresolvable and the rule green. Both halves have a
+    fixture; both go red under mutation.
+  - **A site must be fully contained.** `as: word` joins words with `\s+` and
+    spans a line break, so matches genuinely straddle zone edges.
+  - **An unresolvable zone fails the rule**, one entry per file rather than per
+    entity. Resolution is hoisted above the entity loop: `find` runs once per
+    extracted string, so a single broken bound over a 411-term glossary and 30
+    chapters would otherwise emit 12,330 identical failures and bury every real
+    finding. `rift list` prints the same line in yellow and exits 0.
+
+- **A zoned `measure` takes exact counts, not statistics.** `pattern:`, or
+  `metric: word-count`. Every other metric with a zone is a config error, as is
+  `per:` and as is `expect: vs-siblings`. A count over a span is as correct as a
+  count over a file; a ratio, a coefficient of variation, an autocorrelation or a
+  mean is not, because a zone is short enough that crude sentence splitting
+  dominates. `vs-siblings` is rejected separately from the metric allowlist
+  rather than folded into it — `pattern:` is not a `metric:`, so the allowlist
+  alone misses a zoned pattern count compared against siblings.
+
+  Zoned `measure` keys report the zone with the path — `chapters/ch01.md#2`.
+
+- **`zone:` is a config error on `require`,** and the message says why rather
+  than only that the key is unknown. `matcher.check` early-returns on the first
+  file in the glob that matches: it is existential over the document set, so
+  every per-file claim that wanted a zone passes the moment one chapter in forty
+  complies. It unlocks when `per_file:` does.
+
+- **Every malformed zone exits 2 before any rule runs**, from `_kinds_or_exit` —
+  unknown sub-keys, both forms at once, neither form, an unknown unit, a
+  non-integer index, a bound that does not compile. Compiling the bounds up front
+  matters: `find` swallows `re.error`, so a typo'd bound would otherwise make the
+  rule silently green.
+
+### Fixes
+
+- **`rift list` tracebacked on an unknown metric** where `rift check` exited 2
+  cleanly. Its `measure` branch called `_values`/`_apply_expect` with no
+  `ConfigError` handler.
+
+- **`_apply_expect`'s degenerate-set guard counted entries, not files.** Reachable
+  only if the `vs-siblings` rejection is ever relaxed, and kept as depth against
+  that: with zoned keys a two-file set would otherwise be judged against
+  "siblings" that are its own other zones.
+
+### Internals
+
+- `_H2` moves from `measure.py` to `text.py`. Both the `sections` metric and the
+  new `section_spans` need it, and `text` is the base of the module graph, so
+  having `text` reach up for it is a circular import that fails at load.
+- `text` gains `section_spans` and `zone_spans`; `matcher.find` and
+  `matcher.unpermitted` take precomputed spans; `cli._occurrences` and
+  `cli._values` return `(results, unresolved)`.
+- A twelfth self-lint rule covers the `zone` sub-keys. It uses `wrap:` rather
+  than `as: table_cell`, because with `table_cell` it passed on a README with the
+  row deleted — `index` was satisfied by an unrelated `a/index.md`, and `after`
+  and `before` are ordinary English words that match some cell on almost any
+  page.
+
 ## [v0.5.1] - 2026-08-27
 
 ### Fixes
