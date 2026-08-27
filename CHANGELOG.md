@@ -4,6 +4,14 @@ All notable changes to this project are documented here. Format: Keep a Changelo
 
 ## [Unreleased]
 
+## [v0.4.0] - 2026-08-27
+
+One new rule kind and a sentence scope, both of which came from asking whether
+rift could check spelling, grammar and passive voice. Three of those four are
+recorded as out of scope with their reasoning in
+`docs/prose-allowlists-and-sentence-scope-design.md`; what survived is the shape
+underneath them.
+
 ### Changed
 
 - **`as: word` tolerates a line wrap inside a multi-word entity.** The space in
@@ -57,6 +65,19 @@ All notable changes to this project are documented here. Format: Keep a Changelo
   a config raised `KeyError: 'forbid'` and killed the whole listing — including
   the forbid rules it had not reached yet. Measure rules now report every
   measured file with its value, and the out-of-bounds ones carry their reason.
+
+### Notes
+
+229 tests. Seven mutants run against the new code; **one initially survived** —
+`sentence_start_offsets` returning raw span starts instead of first-token offsets
+passed all 211 tests, because `_TERMINATOR` is `[.!?…]+\s+` and already consumes
+the gap between sentences, so the fixture built on that gap could not
+discriminate. The case that does is an indented paragraph; there is now a test
+for it at both the text and the matcher level, and the mutant dies.
+
+`rift check` over a frozen `books-tsoc` snapshot is byte-identical before and
+after this release — the whitespace-tolerant `as: word` change moved nothing in
+a repo that writes one paragraph per line, which is what it predicted.
 
 ## [v0.3.0] - 2026-08-26
 
