@@ -1,7 +1,7 @@
 # Zone scoping — implementation plan
 
 **Spec:** `docs/zone-scoping-design.md`
-**Status:** not started.
+**Status:** implemented and released as `v0.6.0` on 2026-08-27.
 **Target:** `v0.6.0`.
 
 Six slices, cheapest first, each ending with rift able to do something end to end
@@ -202,6 +202,55 @@ build is concerned, genuinely optional — the opposite of what was claimed.
 Which is why 5.4 exists. The repo's own rule is that if a check can be a script it
 must not be a doc rule, so the fix is a self-lint rule rather than a promise to
 remember.
+
+## What changed while implementing
+
+Seven departures, recorded so the plan stays checkable against `src/`.
+
+**1. `strip:` is not a `forbid` key, so 3.1's fixture could not have caught its
+bug.** The plan's verify column reads *"a rule whose `strip:` targets its own
+bound pattern still resolves"* — but `matcher.find` never calls
+`strip_patterns`. Only `permit` and `_values` strip. Written as specified,
+against a `forbid` rule, the fixture would have passed whatever the ordering
+was, which is the vacuity this plan's own second constraint exists to forbid.
+The test is a `permit` rule instead, and mutation confirms it: folding the strip
+into `_zoned_spans` turns three tests red.
+
+This is a fourth instance of the pattern in the global constraints, and the same
+shape as the other three — *"`strip:` is a prose-rule key"* is true of `permit`
+and `measure` and false of `forbid`. Correct about the neighbour.
+
+**2. `_zoned_spans` takes `(root, spec)`, not `(root, docs, zone,
+include_quotes)`.** It reads `in:`, `zone:` and `include_quotes:` off the spec
+itself and returns `(None, [])` when there is no zone, which collapses four call
+sites — `forbid` and `permit`, in `check` and in `list` — to one line each.
+
+**3. `_validate_zone` rejects shape errors the plan did not enumerate**: an
+unknown sub-key, neither form, an unknown `unit`, a non-integer `index`, and a
+bound that does not compile. The slice's stated deliverable is *every* malformed
+zone exiting 2, and each of these otherwise reaches the runtime — the last as a
+swallowed `re.error` that makes the rule silently green.
+
+**4. "`zone` on `require`" and "`zone` beside `require.exists`" are one
+rejection, two tests.** `zone:` lives inside the kind's dict, so the second is a
+special case of the first. Both configs are pinned; there is one code path.
+
+**5. 2.2's acceptance case is a unit test on `_validate_zone` in slice 2 and a
+CLI test in slice 4.** While `measure` was staged-rejected there was no
+CLI-level "accepted" to assert, and the allowlist lives in `_validate_zone`
+anyway. `test_word_count_with_a_zone_is_accepted_end_to_end` closes it once the
+wiring lands.
+
+**6. `_ZONE_UNWIRED` is deleted, not left empty.** With every slice landed it is
+a guard that can no longer fire, which is the thing this repo refuses to ship.
+
+**7. 5.4 uses `wrap:`, not `as: table_cell` — and this only surfaced by watching
+it fail.** With `table_cell` the rule passed against a README with the `index`
+row deleted: `index` was satisfied by the unrelated `a/index.md` in the
+extractors table, and `after` and `before` are ordinary English words matching
+some cell on almost any page. Requiring a backticked cell of its own turns all
+four deletions red. **When a roster's members are common words, `as: table_cell`
+is a rule that cannot fail.**
 
 ## Not in this plan
 

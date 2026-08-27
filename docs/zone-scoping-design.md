@@ -1,7 +1,7 @@
 # Zone scoping — design
 
-**Status:** approved 2026-08-27; revised the same day after review; not yet
-implemented.
+**Status:** approved 2026-08-27; revised the same day after review;
+implemented and released as `v0.6.0` the same day.
 **Scope:** a `zone:` key on `forbid`, `permit` and `measure` that restricts a rule
 to part of a document instead of all of it. Deliberately **not** on `require` —
 see below. No new rule kind, no new extractor, no new metric.
