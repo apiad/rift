@@ -21,21 +21,48 @@ uv sync
 uv run rift --help
 ```
 
-## Quickstart
+## Commands
 
-```bash
-rift init          # scaffold a starter .rift.yaml
-rift check         # run every rule; exit 1 if any error-severity rule fails
-rift list          # per-entity ✓/✗ breakdown — use this to tune a noisy rule
-rift stats 'ch*.md'   # the full metric table for a file set; never judges, always exits 0
-```
+Four, and the split between the first two is the one that matters: `check` is the
+gate, `list` is how you tune a rule until the gate is worth trusting.
 
-`rift check` and `rift list` take an optional project root (default `.`) and
-`-c/--config` (default `.rift.yaml`, resolved relative to the root).
-`rift list -r <substring>` filters to matching rule names.
+### `init`
+
+Scaffolds a starter `.rift.yaml` with one worked rule. Start here, then read
+`know-how/writing-rules.md` before adding the second rule.
+
+### `check`
+
+Runs every rule and **exits 1** if any error-severity rule fails. This is what CI
+runs. Takes an optional project root (default `.`) and `-c/--config` (default
+`.rift.yaml`, resolved relative to the root).
 
 **Exit codes:** `0` all rules pass, or only warnings failed · `1` at least one
 error-severity rule failed · `2` no config file found, or a malformed rule.
+
+### `list`
+
+The per-entity breakdown — every ✓ and every ✗, not just the failures. This is the
+tuning surface, and each rule kind reports the thing that is useful for it:
+`require` lists entities, `forbid` lists sites, `permit` lists *vocabulary*
+(unique tokens by frequency), `measure` lists every file with its value.
+
+`rift list -r <substring>` filters to matching rule names.
+
+**Write a rule at `severity: warning`, run `list`, read every ✗, and promote to
+`error` only when the list is empty for reasons you agree with.** A mostly-red
+rule trains everyone to skim past red.
+
+### `stats`
+
+The full metric table for a file set. Never judges, always exits 0, needs no
+config — the surface for asking whether a chapter is unlike its siblings before
+committing to a threshold.
+
+```bash
+rift stats 'ch*.md'
+rift stats 'ch*.md' -m sentence -s '\{[~>][^}]*\}'   # filter metrics, strip markup
+```
 
 ## Config
 
@@ -263,13 +290,29 @@ sharply from its peers. A set of fewer than 4 files is reported with a warning a
 **not** judged; silently passing or failing would both be lies about what was
 checked. An absent `expect` reports the number and passes.
 
-**Metrics.** `word-count` · `burrows-delta` (authorial fingerprint, from the rates of the most
-frequent tokens — noisy at chapter length, so rank it rather than trusting the
-absolute value) · `sentence-length-cv`, `short-sentence-ratio`,
-`sentence-length-autocorr`, `mean-sentence-length` (rhythm) · `mattr`,
-`hapax-ratio`, `self-repetition`, `repeated-sentence-openers` (texture) · `paragraph-length-cv`,
-`mean-paragraph-length`, `sections`, `words-per-section`, `mean-heading-length`,
-`opening-paragraphs` (structure).
+#### Metrics
+
+Each takes one document and returns one number, read masked and stripped — so a
+file is never credited for its code blocks nor penalised for its markers.
+
+| Metric | Family | Measures |
+|---|---|---|
+| `mean-sentence-length` | rhythm | mean tokens per sentence |
+| `sentence-length-cv` | rhythm | burstiness, σ/μ. Human prose runs high, uniform prose low |
+| `short-sentence-ratio` | rhythm | share of sentences under 6 tokens — the emphasis beat uniform prose lacks |
+| `sentence-length-autocorr` | rhythm | lag-1 autocorrelation. Humans write in runs; uniform-random sits near zero |
+| `mattr` | texture | moving-average type-token ratio over a 200-token window. Length-independent, unlike raw TTR |
+| `hapax-ratio` | texture | share of tokens appearing exactly once |
+| `self-repetition` | texture | share of 4-grams occurring more than once |
+| `repeated-sentence-openers` | texture | consecutive sentences opening on the same token, per 1000 tokens |
+| `sections` | structure | count of `##` headings |
+| `words-per-section` | structure | prose tokens divided by section count |
+| `mean-paragraph-length` | structure | mean tokens per paragraph |
+| `paragraph-length-cv` | structure | σ/μ of paragraph lengths |
+| `mean-heading-length` | structure | mean tokens per heading |
+| `opening-paragraphs` | structure | blocks between the `#` title and the first `##` |
+| `word-count` | size | prose tokens in the document |
+| `burrows-delta` | voice | authorial fingerprint from the rates of the most frequent tokens. **Set-level**, and noisy at chapter length — rank it rather than trusting the absolute value |
 
 Every one is language-agnostic — `\w+` tokenising and punctuation-based sentence
 splitting, so Spanish works unchanged. Readability scores are deliberately absent:

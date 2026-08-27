@@ -35,3 +35,13 @@ jobs:
 
       - name: Tests
         run: uv run pytest -q
+
+      # rift lints rift. Nine error-severity rules assert that its own docs
+      # still describe its own code — every rule kind, matcher, extractor key,
+      # expect predicate and metric reaches the README, every path the docs name
+      # exists, and AGENTS.md agrees with pyproject about the version.
+      #
+      # Here rather than only in `make test`, because a gate that runs when
+      # someone remembers is a gate that stops running.
+      - name: rift lints itself
+        run: uv run rift check .

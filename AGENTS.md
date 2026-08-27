@@ -32,10 +32,69 @@ src/rift/cli.py         check / list / stats / init + exit codes
 tests/                  one file per module
 ```
 
-One concern per module, and each module readable on its own. There is no line
-budget — rift grows when it earns it. What must not degrade is the property that
-makes it worth running: you can read the module behind any given rule and believe
-its output.
+One concern per module, and each readable on its own. There is no line budget —
+rift grows when it earns it. What must not degrade is the property that makes it
+worth running: you can read the module behind any given rule and believe its
+output.
+
+## Public API
+
+The functions worth knowing before you change anything. Everything else in these
+modules is a private helper.
+
+**`src/rift/extractor.py` — where a set of entities comes from.**
+
+| Function | Contract |
+|---|---|
+| `extract(root, config) -> set[str]` | dispatches on the single extractor key in `config`. **Swallows every read error**, so a malformed or missing source yields the empty set — see the blind spot below. |
+| `resolve_globs(root, patterns) -> list[Path]` | one glob or a list of them, deduplicated and sorted. Every `in:`, `file:` and `files:` goes through it. |
+
+**`src/rift/matcher.py` — what counts as satisfied, banned, or unpermitted.**
+
+| Function | Contract |
+|---|---|
+| `check(root, entity, require) -> bool` | *is it anywhere?* Returns as soon as it knows. Reads the document **unmasked** — `require` asks whether something is documented, and a code fence is documentation. |
+| `find(root, entity, forbid) -> [(Path, int, str)]` | *where is it?* Visits every file and every occurrence, no early return. Reads **masked**. |
+| `unpermitted(root, allowed, permit) -> [(Path, int, str)]` | *what is here that should not be?* Takes the **whole allowed set** and walks the document once — unlike the two above, which take one entity and are called once per extracted string. |
+
+**`src/rift/text.py` — normalisation shared by the matcher and the metrics.**
+
+| Function | Contract |
+|---|---|
+| `mask(text, include_quotes=False)` | **blanks, never deletes.** Offsets must keep indexing the original file or every reported line number is wrong. |
+| `strip_patterns(text, patterns)` | blanks caller-supplied renderer markup. Same blanking contract. |
+| `tokens` / `token_spans` | `\w+`, Unicode. `tokens` lowercases and drops offsets; `token_spans` keeps both, which is what `permit` needs. |
+| `sentences` / `sentence_spans` / `sentence_start_offsets` | crude splitting on purpose. `sentence_start_offsets` gives the first *word* offset, not the span start. |
+| `paragraphs` / `paragraph_spans` | runs of non-blank lines, block elements removed. |
+| `line_of(text, pos)` | 1-indexed line for an offset. |
+
+The `*_spans` functions are the primitives; the string and token versions are thin
+wrappers over them. **Change a span function and the metrics move** — the metric
+suite passing untouched is the acceptance condition for any edit here.
+
+**`src/rift/measure.py` — text in, numbers out.** Pure functions, no filesystem.
+`METRICS` maps every documented metric name to its function; `burrows_delta` is
+separate because it needs the whole file set rather than one document.
+
+**`src/rift/cli.py` — the commands and the exit codes.** `RULE_KINDS` is the
+roster of rule kinds; `_rule_kind` rejects a rule carrying more than one. Both
+`check_cmd` and `list_cmd` dispatch on kind **explicitly**, with a final `else`
+that fails loudly — see the warning below.
+
+## rift lints itself
+
+`.rift.yaml` points rift at rift: eleven rules over its own API rosters, the paths
+its docs name, and its own prose. `rift check` runs in CI beside the suite.
+
+**If you add a rule kind, a matcher, an extractor key, an `expect` predicate or a
+metric, a rule here fails until you document it.** That is the whole point — those
+five rosters are extracted from the code that dispatches on them, so the config
+cannot drift from the implementation without someone noticing.
+
+Two of rift's own features are deliberately unused, and the config says why:
+`measure`/`vs-siblings` needs four files in a set and there are two know-how docs,
+and `permit` reads masked prose so it cannot see identifiers in backticks. Do not
+add either to prove a point — a config that lies is worse than a thin one.
 
 ## The rule that matters most here
 
