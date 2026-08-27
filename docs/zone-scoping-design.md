@@ -81,17 +81,27 @@ reopening a settled boundary through a key that looks purely structural. Excludi
 
 ## Zones resolve between `mask` and `strip_patterns`
 
-The three kinds that keep zones all read masked text already, so zone spans are
-resolved on the text the rule is scanning — no separate masking pass, and offsets
-stay aligned with `text.line_of`.
+**Two of the three read masked text already; `measure` does not.** `find` and
+`unpermitted` call `mask()` themselves, so their zone spans resolve on exactly the
+text the rule is scanning and offsets stay aligned with `text.line_of` for free.
+`cli._values` holds **raw** text and never masks — each metric masks its own input
+instead — so the zoned `measure` path **gains a masking pass** it does not have
+today.
 
-The ordering against `strip_patterns` is the part that needs stating.
-`unpermitted` and `_values` both strip *after* masking, and the motivating
-delimited bound is a renderer macro — exactly what `strip:` is for. A rule
-stripping `\\sep\d` as apparatus makes every delimited zone in that same rule
-unresolvable. Verified: with `strip: ['\\sep\d']` the bound is gone before any
-zone could see it. **Mask, then resolve zones, then strip** is the only ordering
-that works.
+That is not a detail to defer to the implementation notes. Resolving zones on raw
+text would split `unit: section` on a `##` **inside a code fence**, which is the
+precise failure `measure.py`'s module docstring says it is careful to avoid, and
+it would pass every fixture that happens not to contain a fence.
+
+The ordering against `strip_patterns` is the second half. `unpermitted` strips
+after masking and `_values` strips the raw text; under this design both become
+mask → resolve zones → strip. The reason is that the motivating delimited bound is
+a renderer macro — exactly what `strip:` is for — so a rule stripping `\\sep\d` as
+apparatus makes every delimited zone in that same rule unresolvable. Verified:
+with `strip: ['\\sep\d']` the bound is gone before any zone could see it.
+
+**Mask, then resolve zones, then strip** is the only ordering that works, and for
+`measure` the first of those three steps is new.
 
 ## The two forms
 
