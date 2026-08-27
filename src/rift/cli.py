@@ -281,13 +281,30 @@ def list_cmd(path, config, rule):
                 ok = check(root, e, r["require"])
                 icon = "[green]✓[/green]" if ok else "[red]✗[/red]"
                 console.print(f"  {icon} {e}")
-        else:
+        elif kind == "forbid":
             # A banned entry that appears nowhere is not interesting: for
             # forbid, the occurrences *are* the report.
             sites = _occurrences(root, r)
             console.print(f"\n[bold]{r['name']}[/bold]  ({len(sites)} occurrences)")
             for path, line, entity in sites:
                 console.print(f"  [red]✗[/red] {path.relative_to(root)}:{line}   {entity}")
+        else:
+            # For a measure rule the measured files are the entities, so the
+            # per-entity report is every file's value — passing ones included,
+            # since a number you can see beats a number you have to infer.
+            values = _values(root, r["measure"])
+            out_of_bounds, notes = _apply_expect(values, r.get("expect", {}))
+            why: dict = {}
+            for path, _, reason in out_of_bounds:
+                why.setdefault(path, []).append(reason)
+
+            console.print(f"\n[bold]{r['name']}[/bold]  ({len(values)} files)")
+            for note in notes:
+                console.print(f"  [yellow]{note}[/yellow]")
+            for f, v in sorted(values.items()):
+                icon = "[red]✗[/red]" if f in why else "[green]✓[/green]"
+                reason = f"   {'; '.join(why[f])}" if f in why else ""
+                console.print(f"  {icon} {f.relative_to(root)}   {v:.2f}{reason}")
 
 
 @main.command("stats")

@@ -344,6 +344,20 @@ def test_vs_siblings_on_a_small_set_warns_and_passes(repo, write):
     assert "too small" in result.output
 
 
+def test_list_shows_every_measured_file_with_its_value(repo, write):
+    """`list` is the per-entity surface; for a measure rule the files are the
+    entities. It used to crash on any measure rule, which made the whole
+    command unusable in a config that mixes kinds."""
+    chapters(write, ch01=CH3, ch02=CH5)
+    config(write, measure_rule(expect={"min": 4.0}))
+
+    result = runner.invoke(main, ["list", str(repo)])
+    assert result.exit_code == 0
+    assert "ch01.md" in result.output and "3.00" in result.output
+    assert "ch02.md" in result.output and "5.00" in result.output
+    assert "below min 4.0" in result.output
+
+
 def test_measure_pattern_counts_a_caller_supplied_regex(repo, write):
     chapters(write, ch01="a {~one} b {~two}\n")
     config(write, {

@@ -4,6 +4,14 @@ All notable changes to this project are documented here. Format: Keep a Changelo
 
 ## [Unreleased]
 
+### Fixes
+
+- **`rift list` no longer crashes on a `measure` rule.** It handled `require` and
+  `forbid` and treated everything else as `forbid`, so the first measure rule in
+  a config raised `KeyError: 'forbid'` and killed the whole listing — including
+  the forbid rules it had not reached yet. Measure rules now report every
+  measured file with its value, and the out-of-bounds ones carry their reason.
+
 ## [v0.3.0] - 2026-08-26
 
 Three primitives, all of which came from encoding a real book's style guide
