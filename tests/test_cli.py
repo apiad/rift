@@ -790,18 +790,6 @@ def test_a_bad_zone_in_the_last_rule_stops_the_run_before_any_output(repo, write
     assert "19 rules" not in result.output
 
 
-def test_a_well_formed_zone_exits_two_until_its_slice_lands(repo, write):
-    """Deleted slice by slice. A `zone:` that validates but is wired to nothing
-    would lint the whole file and report a green tick — a rule that cannot fail,
-    on main, in a repo whose ethos is that such a rule is worse than none."""
-    write("chapters/ch01.md", "Delve here.\n")
-    config(write, zoned_measure(metric="word-count"))
-
-    result = runner.invoke(main, ["check", str(repo)])
-    assert result.exit_code == 2
-    assert "zoned measure" in result.output
-
-
 def test_the_degenerate_set_guard_counts_files_not_entries():
     """Zoned keys put several entries on one file. Counting entries would judge
     a two-file set against "siblings" that are its own other zones."""
@@ -990,3 +978,158 @@ def test_a_zoned_permit_still_flags_a_token_inside_the_zone(repo, write):
     result = runner.invoke(main, ["check", str(repo)])
     assert result.exit_code == 1
     assert "Bogusword" in result.output
+
+
+# --- zoned measure (slice 4) ---
+
+# A `##` inside a code fence. Resolving zones on raw text splits here — the
+# precise failure `measure.py`'s docstring says it avoids — and any fixture
+# without a fence passes either way.
+FENCED = """\
+# Title
+
+## Real
+
+Alpha beta gamma delta.
+
+```
+## Fake heading
+```
+
+Epsilon zeta eta theta.
+"""
+
+
+def test_a_zoned_section_does_not_split_on_a_heading_inside_a_fence(repo, write):
+    write("chapters/ch01.md", FENCED)
+    config(write, {
+        "name": "zoned words",
+        "measure": {"files": "chapters/*.md", "metric": "word-count",
+                    "zone": {"unit": "section", "index": [-1]}},
+    })
+
+    output = runner.invoke(main, ["list", str(repo)]).output
+    # "Real" plus the eight prose words either side of the fence.
+    assert "9.00" in output
+
+
+def test_a_zoned_word_count_measures_the_zone_not_the_file(repo, write):
+    """The opening paragraph is 45-70 words — one of the two rules that
+    motivated zoning `measure`."""
+    write("chapters/ch01.md", "One two three.\n\nFour five six seven eight nine.\n")
+    config(write, {
+        "name": "opening length",
+        "measure": {"files": "chapters/*.md", "metric": "word-count",
+                    "zone": {"unit": "paragraph", "index": [0]}},
+        "expect": {"max": 4},
+    })
+
+    result = runner.invoke(main, ["check", str(repo)])
+    assert result.exit_code == 0
+    assert "9.00" not in result.output
+
+
+def test_a_zoned_pattern_count_fires_per_section(repo, write):
+    """Bold at most once per section — the other motivating rule. The file has
+    two bolds; neither section has two, so an unzoned rule would fail here."""
+    write("chapters/ch01.md",
+          "## One\n\nSome **bold** here.\n\n## Two\n\nMore **bold** there.\n")
+    config(write, {
+        "name": "bold once per section",
+        "measure": {"files": "chapters/*.md", "pattern": r"\*\*[^*]+\*\*",
+                    "zone": {"unit": "section"}},
+        "expect": {"max": 1},
+    })
+
+    assert runner.invoke(main, ["check", str(repo)]).exit_code == 0
+
+
+def test_a_zoned_pattern_count_still_fails_the_section_that_breaks_it(repo, write):
+    write("chapters/ch01.md",
+          "## One\n\nSome **bold** and **more** here.\n\n## Two\n\nPlain.\n")
+    config(write, {
+        "name": "bold once per section",
+        "measure": {"files": "chapters/*.md", "pattern": r"\*\*[^*]+\*\*",
+                    "zone": {"unit": "section"}},
+        "expect": {"max": 1},
+    })
+
+    result = runner.invoke(main, ["check", str(repo)])
+    assert result.exit_code == 1
+    assert "2.00" in result.output
+
+
+def test_a_zoned_failure_names_the_zone_as_well_as_the_path(repo, write):
+    write("chapters/ch01.md",
+          "## One\n\nPlain.\n\n## Two\n\n**a** **b**\n")
+    config(write, {
+        "name": "bold once per section",
+        "measure": {"files": "chapters/*.md", "pattern": r"\*\*[^*]+\*\*",
+                    "zone": {"unit": "section"}},
+        "expect": {"max": 1},
+    })
+
+    for cmd in ("check", "list"):
+        output = runner.invoke(main, [cmd, str(repo)]).output
+        assert "chapters/ch01.md#2" in output, cmd
+
+
+def test_an_unzoned_measure_key_renders_without_a_zone_suffix(repo, write):
+    chapters(write, ch01=CH3)
+    config(write, measure_rule(expect={"min": 4.0}))
+
+    for cmd in ("check", "list"):
+        output = runner.invoke(main, [cmd, str(repo)]).output
+        assert "chapters/ch01.md " in output, cmd
+        assert "ch01.md#" not in output, cmd
+
+
+def test_a_measure_whose_zone_matched_nothing_fails_the_rule(repo, write):
+    write("chapters/ch01.md", "No bounds anywhere here.\n")
+    config(write, {
+        "name": "zoned words",
+        "measure": {"files": "chapters/*.md", "metric": "word-count",
+                    "zone": {"after": r"\\sep2"}},
+        "expect": {"min": 1},
+    })
+
+    result = runner.invoke(main, ["check", str(repo)])
+    assert result.exit_code == 1
+    assert "zone matched nothing" in result.output
+    assert "chapters/ch01.md" in result.output
+
+
+def test_a_zoned_measure_reports_one_entry_per_unresolved_file(repo, write):
+    write("chapters/ch01.md", "Nothing here.\n")
+    write("chapters/ch02.md", "Nor here.\n")
+    config(write, {
+        "name": "zoned words",
+        "measure": {"files": "chapters/*.md", "metric": "word-count",
+                    "zone": {"after": r"\\sep2"}},
+    })
+
+    result = runner.invoke(main, ["check", str(repo)])
+    assert "2 out of bounds" in result.output
+
+
+def test_list_prints_an_unresolved_measure_zone_and_exits_zero(repo, write):
+    write("chapters/ch01.md", "Nothing here.\n")
+    config(write, {
+        "name": "zoned words",
+        "measure": {"files": "chapters/*.md", "metric": "word-count",
+                    "zone": {"after": r"\\sep2"}},
+        "expect": {"min": 1},
+    })
+
+    result = runner.invoke(main, ["list", str(repo)])
+    assert result.exit_code == 0
+    assert "zone matched nothing" in result.output
+
+
+def test_word_count_with_a_zone_is_accepted_end_to_end(repo, write):
+    """2.2's converse, now that the wiring exists: a blanket ban would drop the
+    one metric the allowlist was written to serve."""
+    write("chapters/ch01.md", "One two three.\n")
+    config(write, zoned_measure(metric="word-count"))
+
+    assert runner.invoke(main, ["check", str(repo)]).exit_code == 0

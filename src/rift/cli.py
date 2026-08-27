@@ -30,12 +30,6 @@ _ZONE_SAFE_METRICS = {"word-count"}
 
 _ZONE_UNITS = ("paragraph", "section")
 
-# Kinds whose zone wiring has not landed yet. A well-formed `zone:` that
-# validates but is consumed by nothing would lint the whole file and print a
-# green tick — a rule that cannot fail, which this repo holds to be worse than
-# no rule at all. Entries are deleted as their slice arrives.
-_ZONE_UNWIRED: set[str] = {"measure"}
-
 
 class ConfigError(Exception):
     """A rule that is malformed rather than failing."""
@@ -152,11 +146,6 @@ def _kinds_or_exit(rules: list[dict]) -> list[str]:
         for r in rules:
             kind = _rule_kind(r)
             _validate_zone(r, kind)
-            if kind in _ZONE_UNWIRED and "zone" in r.get(kind, {}):
-                raise ConfigError(
-                    f"rule {r.get('name', '<unnamed>')!r}: zone: on {kind} is "
-                    "not implemented yet"
-                )
             kinds.append(kind)
         return kinds
     except ConfigError as e:
@@ -252,31 +241,60 @@ def _occurrences(root: Path, rule: dict) -> tuple[list[tuple[Path, int, str]], l
     return sites, unresolved
 
 
-def _values(root: Path, spec: dict) -> dict:
-    """The metric value per file for a measure spec."""
-    texts = {}
+def _values(root: Path, spec: dict) -> tuple[dict, list[Path]]:
+    """The metric value per key for a measure spec, and the files whose zone missed.
+
+    Keys are `Path` for an unzoned spec and `(Path, zone_index)` for a zoned
+    one, where the index is the position in the rule's own selection.
+
+    The zoned path is a **separate** path on purpose. `_values` holds raw text
+    and never masks — each metric masks its own input — so resolving a zone
+    needs a masking pass this function does not otherwise have, and resolving
+    on the raw text would split `unit: section` on a `##` inside a code fence.
+    Confining the mask to zoned specs makes "an unzoned rule behaves exactly as
+    before" true by construction rather than by luck. A zoned slice is masked
+    twice, which is safe because `mask` only ever replaces with spaces and
+    every one of its patterns needs a literal delimiter the first pass has
+    already blanked.
+    """
+    zone = spec.get("zone")
+    texts: dict = {}
+    unresolved: list[Path] = []
     for f in resolve_globs(root, spec.get("files", [])):
         try:
-            texts[f] = f.read_text()
+            raw = f.read_text()
         except Exception:
             continue
+        if zone is None:
+            texts[f] = raw
+            continue
+        masked = mask(raw)
+        spans = zone_spans(masked, zone)
+        if not spans:
+            unresolved.append(f)
+            continue
+        for i, (s, e) in enumerate(spans):
+            texts[(f, i)] = masked[s:e]
 
     # Renderer markers are apparatus, not prose. Stripped before every metric,
     # so a chapter is not measured as different when only its markup differs.
+    # After the zone, never before it: the bound is often a marker itself.
     strip = spec.get("strip")
     if strip:
         texts = {f: strip_patterns(t, strip) for f, t in texts.items()}
 
     if "pattern" in spec:
-        return {f: measure.pattern_count(t, spec["pattern"], spec.get("per")) for f, t in texts.items()}
+        values = {f: measure.pattern_count(t, spec["pattern"], spec.get("per"))
+                  for f, t in texts.items()}
+        return values, unresolved
 
     metric = spec.get("metric")
     if metric == "burrows-delta":
-        return measure.burrows_delta(texts)
+        return measure.burrows_delta(texts), unresolved
     fn = measure.METRICS.get(metric)
     if fn is None:
         raise ConfigError(f"unknown metric {metric!r}")
-    return {f: fn(t) for f, t in texts.items()}
+    return {f: fn(t) for f, t in texts.items()}, unresolved
 
 
 def _print_unresolved(root: Path, unresolved: list[Path]) -> None:
@@ -302,6 +320,16 @@ def _zone_failures(root: Path, unresolved: list[Path]) -> list[str]:
 def _key_path(key) -> Path:
     """The file a `_values` key names. Zoned keys are `(Path, zone_index)`."""
     return key[0] if isinstance(key, tuple) else key
+
+
+def _render_key(root: Path, key) -> str:
+    """`chapters/ch01.md`, or `chapters/ch01.md#2` for a zoned key.
+
+    A value out of bounds in one section of a forty-section chapter is not a
+    fact about the chapter, so the report has to say which zone it was.
+    """
+    rendered = str(_key_path(key).relative_to(root))
+    return f"{rendered}#{key[1]}" if isinstance(key, tuple) else rendered
 
 
 def _apply_expect(values: dict, expect: dict) -> tuple[list[tuple], list[str]]:
@@ -424,14 +452,14 @@ def check_cmd(path, config):
             label = "unpermitted"
         elif kind == "measure":
             try:
-                values = _values(root, rule["measure"])
+                values, unresolved = _values(root, rule["measure"])
             except ConfigError as e:
                 console.print(f"[red]Config error:[/red] in rule {rule['name']!r}: {e}")
                 sys.exit(2)
             out_of_bounds, notes = _apply_expect(values, rule.get("expect", {}))
-            failures = [
-                f"{path.relative_to(root)}   {value:.2f}   {why}"
-                for path, value, why in out_of_bounds
+            failures = _zone_failures(root, unresolved) + [
+                f"{_render_key(root, key)}   {value:.2f}   {why}"
+                for key, value, why in out_of_bounds
             ]
             label = "out of bounds"
         else:
@@ -536,22 +564,23 @@ def list_cmd(path, config, rule):
             # per-entity report is every file's value — passing ones included,
             # since a number you can see beats a number you have to infer.
             try:
-                values = _values(root, r["measure"])
+                values, unresolved = _values(root, r["measure"])
                 out_of_bounds, notes = _apply_expect(values, r.get("expect", {}))
             except ConfigError as e:
                 console.print(f"[red]Config error:[/red] in rule {r['name']!r}: {e}")
                 sys.exit(2)
             why: dict = {}
-            for path, _, reason in out_of_bounds:
-                why.setdefault(path, []).append(reason)
+            for key, _, reason in out_of_bounds:
+                why.setdefault(key, []).append(reason)
 
             console.print(f"\n[bold]{r['name']}[/bold]  ({len(values)} files)")
             for note in notes:
                 console.print(f"  [yellow]{note}[/yellow]")
+            _print_unresolved(root, unresolved)
             for f, v in sorted(values.items()):
                 icon = "[red]✗[/red]" if f in why else "[green]✓[/green]"
                 reason = f"   {'; '.join(why[f])}" if f in why else ""
-                console.print(f"  {icon} {f.relative_to(root)}   {v:.2f}{reason}")
+                console.print(f"  {icon} {_render_key(root, f)}   {v:.2f}{reason}")
 
 
 @main.command("stats")
@@ -575,7 +604,10 @@ def stats_cmd(files, path, metric, strip):
 
     columns = {}
     for name in names:
-        columns[name] = _values(root, {**spec, "metric": name})
+        # `stats` builds its whole spec from CLI flags, so it has no config and
+        # no zone key: the unresolved list here is always empty and the keys are
+        # always bare paths.
+        columns[name], _ = _values(root, {**spec, "metric": name})
 
     paths = sorted({p for col in columns.values() for p in col})
     if not paths:
