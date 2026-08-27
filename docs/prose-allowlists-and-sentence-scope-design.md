@@ -81,15 +81,6 @@ over `glossary.yaml`, from `regex:`, or from an inline `list:`.
   nothing, and zero entities makes a `require` rule *silently pass*; that is the
   repo's oldest known gap. For `permit` the same emptiness must be maximally
   loud, so it needs its own test rather than inheriting `require`'s.
-- **`strip:` applies**, as it does to `measure`. Marker syntax is apparatus, not
-  prose: `[Enigma]{~encryption}` otherwise reports `encryption`, and a marker
-  whose slug repeats its display text reports the name twice over. Slug fragments
-  are not words anyone misspelled and no dictionary should absorb them.
-- **An empty permitted set reports every token.** This is the opposite polarity
-  to `require` and it is deliberate. A malformed source file makes the extractor
-  yield nothing, and zero entities makes a `require` rule *silently pass* — the
-  repo's known blind spot. For `permit` the same emptiness must be maximally
-  loud, so it needs its own test rather than inheriting `require`'s.
 
 ### Report shape
 
