@@ -2,9 +2,9 @@
 
 **Status:** approved 2026-08-27; revised the same day after review; not yet
 implemented.
-**Scope:** a `zone:` key on `require`, `forbid`, `permit` and `measure` that
-restricts a rule to part of a document instead of all of it. No new rule kind, no
-new extractor, no new metric.
+**Scope:** a `zone:` key on `forbid`, `permit` and `measure` that restricts a rule
+to part of a document instead of all of it. Deliberately **not** on `require` —
+see below. No new rule kind, no new extractor, no new metric.
 
 The five design principles in [`prose-linting-design.md`](prose-linting-design.md)
 govern this and are not restated except where a decision turns on one.
@@ -18,16 +18,17 @@ Surveying four books' style guides on 2026-08-27 — the `/revise` skill,
 by all four independently**, and it is always the same sentence: *this rule
 applies to part of the file, not the whole of it.*
 
-Ten surviving requests, after removing the ones that wanted to read inside code
-blocks (out of scope permanently — see the parent design) and one that `require`
-cannot serve (below). They come in three shapes:
+Nine requests are served here. Removed first were the ones wanting to read inside
+code blocks (out of scope permanently — see the parent design); removed second
+were two that are per-file claims dressed as zones, which `require` cannot serve
+and which wait on `per_file:` (below). The nine come in three shapes:
 
 **A — a window from a file boundary.** Scan only the first or last 200 words for
 scaffolding tics; no rhetorical-question stack at the opening; no italicised
 meta-frame on the first or last paragraph.
 
-**B — a structural position.** The closing section must come last; the opening
-paragraph is 45–70 words; bold at most once per section.
+**B — a structural position.** The opening paragraph is 45–70 words; bold at most
+once per section.
 
 **C — a region delimited by other matches.** No `tú` in the opening and closing
 but fine mid-chapter; no bold title before the first blockquote.
@@ -42,40 +43,55 @@ regions are delimited by custom `\sepN` renderer macros. There is no structural
 marker rift can see. Structural zones alone would leave a third of the surviving
 demand unwritable.
 
-## Zones are always computed on masked text
+## `zone:` applies to `forbid`, `permit` and `measure` — not `require`
 
-**One rule, no exceptions, for every rule kind: zone spans are resolved on
-`mask(text)`, before `strip_patterns` runs.** This is the decision the rest of the
-design hangs on, and it was wrong in the first draft.
+**`zone:` on a `require` rule is a `ConfigError`**, and this is a scope decision
+rather than an oversight.
 
-Two reasons, both found by review rather than by reasoning:
+`matcher.check` returns a bool and early-returns on the **first** file in the glob
+that matches: it is existential over the document set by design. Every surviving
+`require` + zone request is a **per-file** claim — *the closing section must come
+last*, *the promise must land in the first 100 words* — and existentially all of
+them pass the moment one chapter in forty complies. A zone narrows *where in a
+file* the search happens; it cannot change what the question is asked over, so it
+cannot rescue any of them.
 
-**A zone must never be able to select code.** `text.paragraph_spans` drops block
-elements, but a fence's *delimiter* lines are block elements while its *contents*
-are not. On unmasked text a document opening with a code fence yields the code as
-paragraph `[0]`:
+Two further consequences fall out of the same fact, and each would have to be
+documented as a wart if `require` kept zones: `check` has no failure channel, so
+an unresolvable zone in one file would be invisible whenever another file matched;
+and when nothing matched at all, the entity would be reported as *missing* with no
+indication that the zone rather than the content was the cause.
+
+`zone:` becomes available on `require` when `per_file:` does. Until then the error
+names the reason, so nobody re-derives it.
+
+A third argument corroborates it. `require` is the one kind that reads **unmasked**,
+and `paragraph_spans` treats a fence's *delimiter* lines as block elements while
+its *contents* are ordinary prose. On unmasked text a document opening with a code
+fence yields the code as paragraph `[0]`:
 
 ```
 UNMASKED:  [0] 'this is code\nand more code'   [1] 'Real first prose paragraph.'
 MASKED:    [0] 'Real first prose paragraph.'   [1] 'Second prose paragraph.'
 ```
 
-`require` reads unmasked, so a `require` zone resolved the same way would make
-`index: [0]` select a code block — reopening a settled boundary through a key
-that looks purely structural. Resolving spans on masked text closes it. `require`
-still *matches* unmasked within the span it is given, so "a code fence is
-documentation" survives for content; only zone **selection** is masked.
+So a `require` zone would also have made `index: [0]` select a code block,
+reopening a settled boundary through a key that looks purely structural. Excluding
+`require` removes that hazard along with the semantic one.
 
-**`strip:` would otherwise erase the bound.** `unpermitted` and `_values` both
-apply `strip_patterns` after masking, and the motivating delimited bound is a
-renderer macro — exactly what `strip:` is for. A rule stripping `\\sep\d` as
-apparatus makes every delimited zone in that same rule unresolvable. Verified:
-with `strip: ['\\sep\d']` the bound is gone before any zone could see it.
-Resolving zones between `mask` and `strip_patterns` is the only ordering that
-works.
+## Zones resolve between `mask` and `strip_patterns`
 
-Masking is idempotent, so passing an already-masked span to a metric that masks
-again costs nothing.
+The three kinds that keep zones all read masked text already, so zone spans are
+resolved on the text the rule is scanning — no separate masking pass, and offsets
+stay aligned with `text.line_of`.
+
+The ordering against `strip_patterns` is the part that needs stating.
+`unpermitted` and `_values` both strip *after* masking, and the motivating
+delimited bound is a renderer macro — exactly what `strip:` is for. A rule
+stripping `\\sep\d` as apparatus makes every delimited zone in that same rule
+unresolvable. Verified: with `strip: ['\\sep\d']` the bound is gone before any
+zone could see it. **Mask, then resolve zones, then strip** is the only ordering
+that works.
 
 ## The two forms
 
@@ -100,9 +116,9 @@ A rule carries **exactly one** form. Both is a `ConfigError`, matching the rule
 
 A **paragraph** is what `text.paragraph_spans` returns.
 
-A **section** is delimited by `measure._H2` — `##` only, excluding `###` — reusing
-the same compiled regex the `sections` metric already uses, so a config has one
-definition of "section" rather than two. Text before the first `##` is zone 0,
+A **section** is delimited by `text._H2` — `##` only, excluding `###` — the same
+compiled regex the `sections` metric uses, relocated so both share it (see the
+implementation notes). A config has one definition of "section", not two. Text before the first `##` is zone 0,
 which is what makes "the chapter opening" addressable in a file whose first
 heading is its title.
 
@@ -155,10 +171,16 @@ straddle zone edges: `_word_pattern` joins words with `\s+` and is documented to
 span a blank line, and `as: regex` runs `MULTILINE`. Testing only the start offset
 would report a site for a match that mostly lies outside the zone.
 
-## `measure.zone` takes `pattern:` only
+## `measure.zone` takes exact counts, not statistics
 
-Zoning a **metric** is rejected — `metric:` together with `zone:` is a
-`ConfigError`. Two independent reasons:
+A zoned measure may use `pattern:`, or `metric: word-count`. **Every other metric
+with a `zone:` is a `ConfigError.`**
+
+The line is *exact count* versus *statistic*. A count over a span is as correct as
+a count over a file — `pattern_count` and `word_count` both just count things.
+Everything else in `METRICS` is a ratio, a coefficient of variation, an
+autocorrelation or a mean, and those are the ones that go wrong at zone length.
+Two independent reasons, both of which apply only to the statistics:
 
 **Statistical.** The parent design's rule is that no metric may depend on absolute
 sentence counts being correct, which is why every sentence metric is a ratio or a
@@ -173,12 +195,16 @@ cross-document, so zoning it silently redefines "document" as "zone". Rejecting 
 the `metric:` key catches both, where a guard on `vs-siblings` alone would miss
 `burrows-delta` entirely.
 
-**`per:` is also rejected with a zone.** Its denominator is the span's token
-count, which is noisy at zone length for the same reason.
+**`per:` is also rejected with a zone.** It turns an exact count into a ratio
+against the span's token count, which lands it back among the statistics.
 
-What remains is a raw `pattern:` count over a zone — which is exactly the request
-that motivated zoning `measure` at all (*bold at most once per section*), and it
-is exact rather than statistical.
+What remains serves both requests that motivated zoning `measure`: *bold at most
+once per section* is a raw `pattern:` count, and *the opening paragraph is 45–70
+words* is `metric: word-count` with `min`/`max`. Both are exact.
+
+The allowlist is a set of two rather than a property rift can infer, so it is
+written where an implementer will find it and other exact counts (`sections`,
+`opening-paragraphs`) can join it when a real rule needs them — not before.
 
 ## An unresolvable zone fails the rule
 
@@ -197,39 +223,58 @@ through the existing `failures` machinery:
    capitulos/03-el-rio.md   zone matched nothing
 ```
 
-No new channel, no signature change to three functions, and a declared zone that
-does not exist is genuinely a broken rule — the same class as a rule pointed at a
-renamed file, which is the failure this repo has already paid for once.
+A declared zone that does not exist is genuinely a broken rule — the same class as
+a rule pointed at a renamed file, which is the failure this repo has already paid
+for once.
 
-## `require` zones narrow within a file, not across files
+**Two things this costs, stated rather than waved at.** The first draft claimed
+"no new channel, no signature change", which was the same shape of claim as the
+note-channel error it was replacing.
 
-`matcher.check` returns `True` on the **first** file in the glob that matches — it
-is existential over the glob by design. A zone narrows *where in a file* it looks;
-it cannot make `require` ask the question per-file.
+**It is one entry per file, not per entity.** `find` is called once per extracted
+entity (`cli._occurrences`), so producing the entry inside that loop would emit
+411 glossary entries × 30 chapters = 12,330 identical `zone matched nothing`
+failures from a single broken bound, of which six print and the rest become
+`(+12,324 more)` — burying every real finding in the rule. Zone resolution is
+therefore hoisted **above** the entity loop, into `_occurrences`, which produces
+one entry per `(rule, file)` and passes the resolved spans down.
 
-So the request "the guide's surname is required in the footnote" is **not covered
-by this design** and has been dropped from the list above: it would pass when one
-chapter in forty satisfies it. Making `require` per-file is a separate feature
-with its own key (`per_file:`) and its own evidence, and is out of scope here.
+**That is a signature change**, and hoisting is what makes it a small one:
+`find` and `unpermitted` take precomputed spans rather than a `zone` dict, and
+`_occurrences` — which already builds `failures` strings directly — owns both the
+resolution and the reporting. The alternative was smuggling the entry through the
+`(Path, int, str)` site tuple that `check_cmd` and `list_cmd` both render as
+`{path}:{line}   {entity}`, which would have meant inventing a fake `:0`.
+
+**The label follows the rule kind**, since `check_cmd` renders one label per rule:
+`[N occurrences]` on `forbid`, `[N unpermitted]` on `permit`, `[N out of bounds]`
+on `measure`. There is no fifth label for zone failures.
 
 ## Where it lands in the code
 
+- **`_H2` moves from `measure.py` into `text.py`**, and `measure` imports it from
+  there. This is a prerequisite, not a tidy-up: `measure.py` already does
+  `from .text import mask, paragraphs, sentences, tokens` and `text.py` imports
+  nothing local — it is the base of the module graph. Having `text` reach into
+  `measure` for `_H2` is a circular import that fails at load, and the parent
+  design names that direction as the wrong shape in so many words. Moving the
+  regex down keeps the single definition of "section" with the arrows pointing
+  the right way.
 - **`text.py`** grows `zone_spans(text, zone) -> list[tuple[int, int]]`, built on
-  `paragraph_spans` plus a new `section_spans` using `measure._H2`. Single place
-  either form is interpreted. Callers pass already-masked text.
-- **`matcher.find`** and **`matcher.unpermitted`** filter sites to those fully
-  contained in a selected span — the same shape as the `sentence_start` filter
-  already in `find`. Zone spans are computed **once per file**, hoisted out of the
-  per-entity loop: `find` is called once per extracted entity and re-masks every
-  file, so a 411-entry glossary over 30 chapters would otherwise recompute spans
-  ~12,000 times.
-- **`matcher.check`** restricts the text it searches. Zones are sliced from the
-  masked text **before** `check` folds the document with `str.lower()`, which is
-  not length-preserving in Unicode (`İ` folds to two codepoints) and would shift
-  every offset. `require.exists: true` ignores `in:` and `as:` because it tests a
-  path — a `zone:` beside it is a `ConfigError`.
+  `paragraph_spans` plus a new `section_spans` using the relocated `_H2`. Single
+  place either form is interpreted. Callers pass already-masked text.
+- **`cli._occurrences`** resolves zones **once per file, above the entity loop**,
+  emits one failure entry per unresolved file, and passes the spans down.
+- **`matcher.find`** and **`matcher.unpermitted`** take precomputed spans and
+  filter sites to those **fully contained** in one — the same shape as the
+  `sentence_start` filter already in `find`.
+- **`matcher.check`** is untouched: `require` does not take zones.
 - **`cli._values`** masks for zone resolution (it currently holds raw text and
-  never masks), slices, then applies `strip_patterns` and counts.
+  never masks), slices, then applies `strip_patterns` and counts. **The masking is
+  scoped to the zoned path only.** Composing it the other way round flips strip
+  and mask relative to today; both blank to spaces so results agree in practice,
+  but confining the change to zoned rules makes "an unzoned rule behaves exactly
+  as before" true by construction rather than by luck.
 - **`cli._values`'s return type changes** and this ripples further than the two
   functions the first draft named. Keys are currently `Path` and
   `.relative_to(root)` is called on them in `check_cmd`, `list_cmd` and
@@ -260,19 +305,28 @@ Cases a weaker suite would miss:
 2. **`index: [-1]` selects the last zone, not the first.** An off-by-one that
    silently picks zone 0 passes any single-zone fixture, so the fixture needs at
    least three zones with distinguishable content.
-3. **A paragraph zone on a document opening with a code fence must not select the
-   code** — asserted under `require`, which is the kind that reads unmasked and
-   the only one where this can regress.
+3. **`zone:` on a `require` rule exits 2**, and the message says why rather than
+   only that the key is unknown.
 4. **A delimited zone survives a `strip:` that targets the bound pattern.**
    Without the mask-then-zone-then-strip ordering this silently reports nothing.
 5. **A delimited zone excludes the bound matches themselves.**
 6. **An unresolvable zone fails**, asserted on the exit code *and* the reported
    text — an exit-code-only test passes against an implementation that reports
-   nothing at all.
-7. **`metric:` + `zone:` exits 2**, including for `metric: burrows-delta`
-   specifically, and the message names the rule.
-8. **A zoned `measure` key survives `relative_to`** in all three commands —
-   `check`, `list` and `stats`.
+   nothing at all. Asserted with a **multi-entity** rule, so that one broken bound
+   yields one entry rather than one per entity; a single-entity fixture cannot
+   tell the two apart.
+7. **A statistical metric with a `zone:` exits 2** — asserted for
+   `metric: sentence-length-cv` *and* for `metric: burrows-delta` specifically,
+   since the latter is the one a `vs-siblings` guard would have missed. The
+   converse is asserted too: `metric: word-count` with a zone is **accepted**, so
+   the allowlist is pinned from both sides rather than degenerating into a
+   blanket ban.
+8. **A zoned `measure` key survives `relative_to`** in `check` **and** `list` —
+   two commands, not three. `stats_cmd` builds its own spec from CLI flags
+   (`{"files": files, "strip": list(strip)}`) with no config and no zone key, so
+   it cannot produce a zoned key at all; asserting three commands would silently
+   test the unzoned path in one of them, which is the vacuity this section exists
+   to catch. `rift stats` is unaffected by this feature and gains no flag.
 9. **A malformed zone exits 2 before any rule output is printed**, which is what
    pins the up-front validation rather than a mid-run raise.
 10. **An unzoned rule behaves exactly as before.** The whole existing suite
@@ -286,8 +340,10 @@ Cases a weaker suite would miss:
   scan for a run satisfying a predicate, not a zone selection; bending `zone:` to
   fit it would produce a key meaning two different things.
 
-- **Per-file `require`.** See above. A real gap, a different key, separate
-  evidence.
+- **`zone:` on `require`, and per-file `require`.** The two are the same item:
+  `check` is existential over the glob, so zoning it cannot express any of the
+  per-file claims that wanted it. `zone:` on `require` is a `ConfigError` and
+  unlocks when `per_file:` lands, which is a different key with its own evidence.
 
 - **Composing the two forms.** No `unit: section` *and* `after:` in one rule. Each
   composition rule is a semantics somebody must hold in their head to predict what
@@ -303,11 +359,21 @@ Cases a weaker suite would miss:
 
 ---
 
-*Revised after a review that checked every claim this spec made about rift's
-internals against `src/` and found ten that did not hold. Four changed the design:
-zones must resolve on masked text (otherwise a `require` paragraph zone selects a
-code fence, and `strip:` erases delimited bounds); zoned `measure` takes
-`pattern:` only rather than `metric:` with absolute thresholds; an unresolvable
-zone fails rather than emitting a note, because the precedent cited for the note
-prints green and exits 0; and `require` zones cannot deliver the per-file request
-that had been listed as covered.*
+*Revised twice, both times after a review that checked this spec's claims about
+rift's internals against `src/` rather than against the spec's own reasoning.*
+
+*The first pass found ten claims that did not hold. Four changed the design:
+zones resolve between `mask` and `strip_patterns` (otherwise `strip:` erases a
+delimited bound); zoned `measure` takes `pattern:` only rather than `metric:` with
+absolute thresholds; an unresolvable zone fails rather than emitting a note,
+because the precedent cited for the note prints green and exits 0; and `require`
+zones could not deliver the per-file request listed as covered.*
+
+*The second pass found four more. One was blocking and load-bearing for the rest:
+instructing `text.section_spans` to import `measure._H2` is a circular import that
+fails at load, since `measure` already imports from `text` and `text` is the base
+of the module graph — so `_H2` moves down instead. The others removed `zone:` from
+`require` entirely rather than documenting a half-feature, made the unresolvable-zone
+entry one-per-file instead of one-per-entity (12,330 identical failures from a
+single broken bound), and cut a vacuous third from a test, since `rift stats`
+builds its own spec and can never produce a zoned key.*
