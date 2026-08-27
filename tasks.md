@@ -28,6 +28,48 @@ most of the friction in adopting one.
 
 ## Done
 
+### ✅ rift lints rift (2026-08-27)
+
+`.rift.yaml`, eleven rules, wired into CI beside the suite. Nine are `error`
+(mechanical facts about this repo), two stay `warning` (prose taste).
+
+Five of them extract a **roster the code dispatches on** — rule kinds from
+`kind == "..."`, matchers from `as_type == "..."`, extractor keys, `expect`
+predicates, metric names from `METRICS` — so adding one and forgetting the README
+fails the build. Functions are deliberately not rostered: they are wiring, and
+`know-how/writing-rules.md` says check the roster.
+
+**Writing the config found two real bugs, which is the argument for dogfooding
+that the books-tsoc pilot already made once.**
+
+1. **`regex:` silently truncated a roster.** It took `group(1)` unconditionally,
+   so an alternation — the normal way to extract a roster a codebase spells two
+   ways — handed `None` to `.strip()` on the unmatched branch, and the
+   `except Exception` around the per-file loop discarded every *remaining* match
+   in that file. Not zero entities, which looks suspicious, but a partial roster
+   reporting pass. The `expect` predicate rule needs exactly that alternation and
+   could not have been written before the fix.
+2. **`permit` had no `strip:`.** `[Enigma]{~encryption}` reported `encryption`,
+   and a marker whose slug repeats its display text reported the name four times.
+   Slug fragments are apparatus no dictionary should absorb.
+
+**Two features are deliberately unused, and the config says why.**
+`measure`/`vs-siblings` needs four files in a set and there are two know-how docs,
+so the rule would sit permanently yellow. `permit` reads *masked* prose, so inline
+code and fences are blank to it — every identifier in the README is in backticks,
+which makes it structurally unable to see what it would be asked about. `require`
+is the tool for API coverage, and that is exactly why `require` alone reads
+unmasked. Forcing either one on would be a config that lies.
+
+**Every rule was watched to fail before being trusted.** Dropping a matcher row,
+dropping an `expect` predicate, renaming a module and falsifying the version each
+turn their rule red; dropping one metric row turns CI red with exit 1. Nine green
+on a first run is the shape of a config that asserts nothing.
+
+The path-existence rule matches **backtick-delimited** paths only, because
+`require` reads unmasked and an unscoped pattern also picks up illustrative paths
+inside config examples. It found a dangling reference on its first run.
+
 ### ✅ CI, and releases gated on it (2026-08-26)
 
 `ci.yml` on push/PR across 3.11 and 3.13; `release.yml` on a `v*` tag. The release
