@@ -21,6 +21,21 @@ console = Console()
 # about it.
 RULE_KINDS = ("require", "forbid", "permit", "measure")
 
+# A zoned `measure` takes exact counts, not statistics. The line is that a count
+# over a span is as correct as a count over a file, where a ratio, a coefficient
+# of variation, an autocorrelation or a mean all go wrong at zone length. Other
+# exact counts (`sections`, `opening-paragraphs`) join this set when a real rule
+# needs them — not before. `pattern:` is exact too, and is not a metric.
+_ZONE_SAFE_METRICS = {"word-count"}
+
+_ZONE_UNITS = ("paragraph", "section")
+
+# Kinds whose zone wiring has not landed yet. A well-formed `zone:` that
+# validates but is consumed by nothing would lint the whole file and print a
+# green tick — a rule that cannot fail, which this repo holds to be worse than
+# no rule at all. Entries are deleted as their slice arrives.
+_ZONE_UNWIRED: set[str] = {"forbid", "permit", "measure"}
+
 
 class ConfigError(Exception):
     """A rule that is malformed rather than failing."""
@@ -36,10 +51,114 @@ def _rule_kind(rule: dict) -> str:
     return present[0]
 
 
+def _validate_zone(rule: dict, kind: str) -> None:
+    """Reject a malformed or unsupported `zone:` before any rule runs.
+
+    Shape first, then the three semantic bans the design argued for: `require`
+    cannot take a zone at all, a zoned `measure` takes exact counts only, and a
+    zoned count may not be compared against siblings.
+    """
+    name = rule.get("name", "<unnamed>")
+    spec = rule.get(kind)
+    if not isinstance(spec, dict) or "zone" not in spec:
+        return
+    zone = spec["zone"]
+    if not isinstance(zone, dict):
+        raise ConfigError(f"rule {name!r}: zone: must be a mapping")
+
+    # `check` returns a bool and early-returns on the first file that matches:
+    # it is existential over the document set. A zone narrows *where in a file*
+    # the search happens, so it cannot turn any of the per-file claims that
+    # wanted it into something `require` can answer.
+    if kind == "require":
+        raise ConfigError(
+            f"rule {name!r}: zone: is not available on require — `check` is "
+            "existential over the file set, so a zone cannot express a per-file "
+            "claim; it unlocks when per_file: does"
+        )
+
+    unknown = set(zone) - {"unit", "index", "after", "before"}
+    if unknown:
+        raise ConfigError(
+            f"rule {name!r}: unknown zone key(s) {', '.join(sorted(unknown))}"
+        )
+
+    structural = "unit" in zone or "index" in zone
+    delimited = "after" in zone or "before" in zone
+    if structural and delimited:
+        raise ConfigError(
+            f"rule {name!r}: zone: carries both forms — use unit/index or "
+            "after/before, not both"
+        )
+    if not structural and not delimited:
+        raise ConfigError(
+            f"rule {name!r}: zone: needs a unit: or a bound (after:/before:)"
+        )
+
+    if structural:
+        unit = zone.get("unit")
+        if unit not in _ZONE_UNITS:
+            raise ConfigError(
+                f"rule {name!r}: zone unit {unit!r} is not one of: "
+                f"{', '.join(_ZONE_UNITS)}"
+            )
+        index = zone.get("index")
+        if index is not None and (
+            not isinstance(index, list) or not all(isinstance(i, int) for i in index)
+        ):
+            raise ConfigError(f"rule {name!r}: zone index: must be a list of integers")
+    else:
+        # A malformed bound would otherwise be swallowed by `find`'s
+        # `except re.error`, which makes a typo'd pattern silently green.
+        for key in ("after", "before"):
+            if key in zone:
+                try:
+                    re.compile(zone[key])
+                except re.error as e:
+                    raise ConfigError(
+                        f"rule {name!r}: malformed zone {key}: pattern — {e}"
+                    ) from None
+
+    if kind == "measure":
+        if "pattern" not in spec:
+            metric = spec.get("metric")
+            if metric not in _ZONE_SAFE_METRICS:
+                raise ConfigError(
+                    f"rule {name!r}: metric {metric!r} cannot take a zone — a "
+                    "zoned measure takes exact counts only "
+                    f"({', '.join(sorted(_ZONE_SAFE_METRICS))}, or pattern:)"
+                )
+        if spec.get("per"):
+            raise ConfigError(
+                f"rule {name!r}: per: turns a zoned count into a ratio, which "
+                "is a statistic — drop one of the two"
+            )
+        # Not caught by the metric guard above: `pattern:` is not a `metric:`,
+        # so a zoned pattern count with vs-siblings would otherwise validate and
+        # compare each (file, zone) against every other — mixing "the other
+        # zones of this file" with "the same zone in other files".
+        if rule.get("expect", {}).get("vs-siblings") is not None:
+            raise ConfigError(
+                f"rule {name!r}: vs-siblings cannot take a zone — with zones "
+                "\"the siblings\" is ambiguous between the other zones of this "
+                "file and the same zone in other files"
+            )
+
+
 def _kinds_or_exit(rules: list[dict]) -> list[str]:
     """Validate every rule up front, so a malformed config fails before any work."""
     try:
-        return [_rule_kind(r) for r in rules]
+        kinds = []
+        for r in rules:
+            kind = _rule_kind(r)
+            _validate_zone(r, kind)
+            if kind in _ZONE_UNWIRED and "zone" in r.get(kind, {}):
+                raise ConfigError(
+                    f"rule {r.get('name', '<unnamed>')!r}: zone: on {kind} is "
+                    "not implemented yet"
+                )
+            kinds.append(kind)
+        return kinds
     except ConfigError as e:
         console.print(f"[red]Config error:[/red] {e}")
         sys.exit(2)
@@ -114,6 +233,11 @@ def _values(root: Path, spec: dict) -> dict:
     return {f: fn(t) for f, t in texts.items()}
 
 
+def _key_path(key) -> Path:
+    """The file a `_values` key names. Zoned keys are `(Path, zone_index)`."""
+    return key[0] if isinstance(key, tuple) else key
+
+
 def _apply_expect(values: dict, expect: dict) -> tuple[list[tuple], list[str]]:
     """Return (failures, notes) where a failure is (path, value, why).
 
@@ -135,10 +259,13 @@ def _apply_expect(values: dict, expect: dict) -> tuple[list[tuple], list[str]]:
         return failures, notes
 
     # Degenerate sets must not silently pass and must not fail — either would be
-    # a lie about what was checked.
-    if len(values) < 4:
+    # a lie about what was checked. Counted over **distinct files**: a zoned key
+    # puts several entries on one file, and counting entries would judge a
+    # two-file set against "siblings" that are its own other zones.
+    files = {_key_path(f) for f in values}
+    if len(files) < 4:
         notes.append(
-            f"set of {len(values)} is too small to judge against siblings "
+            f"set of {len(files)} is too small to judge against siblings "
             "(needs 4); reported, not judged"
         )
         return failures, notes

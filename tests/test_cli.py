@@ -640,3 +640,176 @@ def test_a_rule_carrying_permit_and_forbid_is_rejected(repo, write):
     result = runner.invoke(main, ["check", str(repo)])
     assert result.exit_code == 2
     assert "more than one kind" in result.output
+
+
+# --- zone validation (slice 2) ---
+
+import pytest
+
+from rift.cli import ConfigError, _validate_zone
+
+PARA_ZONE = {"unit": "paragraph", "index": [0]}
+
+
+def zoned_forbid(zone=PARA_ZONE, **over):
+    rule = {
+        "name": "zoned ban",
+        "extract": {"list": ["delve"]},
+        "forbid": {"in": "chapters/*.md", "as": "word", "zone": zone},
+    }
+    rule.update(over)
+    return rule
+
+
+def test_a_zone_carrying_both_forms_is_a_config_error(repo, write):
+    config(write, zoned_forbid({"unit": "paragraph", "after": "SEP"}))
+
+    result = runner.invoke(main, ["check", str(repo)])
+    assert result.exit_code == 2
+    assert "zoned ban" in result.output
+
+
+def test_a_zone_on_a_require_rule_is_a_config_error(repo, write):
+    config(write, {
+        "name": "zoned require",
+        "extract": {"list": ["promise"]},
+        "require": {"in": "chapters/*.md", "as": "word", "zone": PARA_ZONE},
+    })
+
+    result = runner.invoke(main, ["check", str(repo)])
+    assert result.exit_code == 2
+    assert "zoned require" in result.output
+    assert "per_file" in result.output
+
+
+def test_a_zone_beside_require_exists_is_a_config_error(repo, write):
+    config(write, {
+        "name": "zoned exists",
+        "extract": {"list": ["README.md"]},
+        "require": {"exists": True, "zone": PARA_ZONE},
+    })
+
+    result = runner.invoke(main, ["check", str(repo)])
+    assert result.exit_code == 2
+    assert "zoned exists" in result.output
+
+
+def test_an_unknown_unit_is_a_config_error(repo, write):
+    config(write, zoned_forbid({"unit": "chapter", "index": [0]}))
+
+    result = runner.invoke(main, ["check", str(repo)])
+    assert result.exit_code == 2
+    assert "chapter" in result.output
+
+
+def test_an_unknown_zone_key_is_a_config_error(repo, write):
+    config(write, zoned_forbid({"unit": "paragraph", "indices": [0]}))
+
+    result = runner.invoke(main, ["check", str(repo)])
+    assert result.exit_code == 2
+    assert "indices" in result.output
+
+
+def test_an_empty_zone_is_a_config_error(repo, write):
+    config(write, zoned_forbid({}))
+
+    assert runner.invoke(main, ["check", str(repo)]).exit_code == 2
+
+
+def test_a_non_integer_index_is_a_config_error(repo, write):
+    config(write, zoned_forbid({"unit": "paragraph", "index": "first"}))
+
+    assert runner.invoke(main, ["check", str(repo)]).exit_code == 2
+
+
+def test_a_malformed_bound_pattern_is_a_config_error(repo, write):
+    """`find` swallows re.error, which would make a typo'd bound silently green."""
+    config(write, zoned_forbid({"after": "([unclosed"}))
+
+    result = runner.invoke(main, ["check", str(repo)])
+    assert result.exit_code == 2
+    assert "zoned ban" in result.output
+
+
+def zoned_measure(zone=PARA_ZONE, expect=None, **spec):
+    measure = {"files": "chapters/*.md", "zone": zone}
+    measure.update(spec)
+    rule = {"name": "zoned measure", "measure": measure}
+    if expect is not None:
+        rule["expect"] = expect
+    return rule
+
+
+def test_a_statistical_metric_with_a_zone_is_a_config_error():
+    with pytest.raises(ConfigError):
+        _validate_zone(zoned_measure(metric="sentence-length-cv"), "measure")
+
+
+def test_burrows_delta_with_a_zone_is_a_config_error():
+    """The one a `vs-siblings`-only guard would have missed: it is not an
+    `expect` predicate and it is not in `METRICS`."""
+    with pytest.raises(ConfigError):
+        _validate_zone(zoned_measure(metric="burrows-delta"), "measure")
+
+
+def test_word_count_with_a_zone_is_accepted():
+    """Pinned from both sides: asserting only the rejections passes against a
+    blanket ban, which would drop the case the allowlist exists to serve."""
+    _validate_zone(zoned_measure(metric="word-count"), "measure")
+
+
+def test_a_raw_pattern_count_with_a_zone_is_accepted():
+    _validate_zone(zoned_measure(pattern=r"\*\*"), "measure")
+
+
+def test_per_with_a_zone_is_a_config_error():
+    """`per:` turns an exact count into a ratio, back among the statistics."""
+    with pytest.raises(ConfigError):
+        _validate_zone(zoned_measure(pattern=r"\*\*", per=1000), "measure")
+
+
+def test_vs_siblings_with_a_zone_is_a_config_error():
+    """`pattern:` is not a `metric:`, so the allowlist guard alone misses this."""
+    with pytest.raises(ConfigError):
+        _validate_zone(zoned_measure(pattern=r"\*\*", expect={"vs-siblings": 2.0}),
+                       "measure")
+
+
+def test_a_bad_zone_in_the_last_rule_stops_the_run_before_any_output(repo, write):
+    """What pins up-front validation. An exit-code-only test passes against a
+    mid-run raise."""
+    write("chapters/ch01.md", "Aa bb cc.\n")
+    good = [{**RULE_OK, "name": f"rule {i}"} for i in range(19)]
+    write("compose.yml", "services:\n  api: {}\n")
+    write("docs/design.md", "the api service\n")
+    config(write, *good, zoned_forbid({"unit": "chapter"}, name="rule 20"))
+
+    result = runner.invoke(main, ["check", str(repo)])
+    assert result.exit_code == 2
+    assert "rule 1" not in result.output
+    assert "19 rules" not in result.output
+
+
+def test_a_well_formed_zone_exits_two_until_its_slice_lands(repo, write):
+    """Deleted slice by slice. A `zone:` that validates but is wired to nothing
+    would lint the whole file and report a green tick — a rule that cannot fail,
+    on main, in a repo whose ethos is that such a rule is worse than none."""
+    write("chapters/ch01.md", "Delve here.\n")
+    config(write, zoned_forbid())
+
+    result = runner.invoke(main, ["check", str(repo)])
+    assert result.exit_code == 2
+    assert "zoned ban" in result.output
+
+
+def test_the_degenerate_set_guard_counts_files_not_entries():
+    """Zoned keys put several entries on one file. Counting entries would judge
+    a two-file set against "siblings" that are its own other zones."""
+    from pathlib import Path
+
+    from rift.cli import _apply_expect
+
+    values = {(Path("a.md"), i): float(i) for i in range(3)}
+    values.update({(Path("b.md"), i): float(i) for i in range(3)})
+    _, notes = _apply_expect(values, {"vs-siblings": 2.0})
+    assert notes and "set of 2" in notes[0]
