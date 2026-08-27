@@ -30,6 +30,16 @@ _ZONE_SAFE_METRICS = {"word-count"}
 
 _ZONE_UNITS = ("paragraph", "section")
 
+# The sub-keys a `zone:` may carry. A roster rather than four literals inline,
+# so `.rift.yaml` can extract it and fail when one of them reaches the code
+# without reaching the README — the same shape as RULE_KINDS and METRICS.
+_ZONE_KEYS = (
+    "unit",
+    "index",
+    "after",
+    "before",
+)
+
 
 class ConfigError(Exception):
     """A rule that is malformed rather than failing."""
@@ -71,7 +81,7 @@ def _validate_zone(rule: dict, kind: str) -> None:
             "claim; it unlocks when per_file: does"
         )
 
-    unknown = set(zone) - {"unit", "index", "after", "before"}
+    unknown = set(zone) - set(_ZONE_KEYS)
     if unknown:
         raise ConfigError(
             f"rule {name!r}: unknown zone key(s) {', '.join(sorted(unknown))}"

@@ -357,6 +357,101 @@ your renderer:
       vs-siblings: 2.5
 ```
 
+### `zone:` — part of a file, not all of it
+
+Most style rules are about a *region*: the opening paragraph, the last section,
+the stretch between two renderer macros. `zone:` restricts a rule to one, and
+takes the same shape on `forbid`, `permit` and `measure`.
+
+A rule carries **exactly one** of the two forms. Both is a config error.
+
+```yaml
+  - name: "no italicised meta-frame on the opening or closing paragraph"
+    extract:
+      list: ['^_[^_]+_$']
+    forbid:
+      in: "chapters/*.md"
+      as: regex
+      zone: { unit: paragraph, index: [0, -1] }
+```
+
+```yaml
+  - name: "no second-person address outside the journey"
+    extract:
+      list: ["tú", "contigo"]
+    forbid:
+      in: "capitulos/*.md"
+      as: word
+      zone: { after: '\\sep2', before: '\\sep3' }
+```
+
+| Key | Form | Means |
+|---|---|---|
+| `unit` | structural | `paragraph` or `section`. A paragraph is a run of non-blank lines; a section is delimited by `##` (not `###`), and the text before the first `##` is zone 0 |
+| `index` | structural | which zones, as a list of integers with Python semantics — `[-1]` is the last. Omit it and you get every zone |
+| `after` | delimited | a regex; the region starts after its **first** match |
+| `before` | delimited | a regex; the region ends at its **first** match |
+
+Both bounds are optional: `after` alone runs to end of file, `before` alone from
+the start. The region **excludes** the bound matches themselves, so a banned word
+inside the `\sep2` line is not a site. One region per file, first match wins for
+each bound — no nesting, no overlaps. A region selector that resolves ambiguity is
+a parser, and a zone that silently lands on the wrong span produces a rule that is
+confidently wrong about where it looked.
+
+**A site must be fully contained.** `as: word` joins words with `\s+` and spans a
+line break, and `as: regex` runs MULTILINE, so a match that straddles a zone edge
+is genuinely possible — and is not reported.
+
+**An unresolvable zone fails the rule.** A missing bound, an inverted pair or an
+index past the end yields one entry per file, carrying the rule's own severity:
+
+```
+✗  no second-person address outside the journey  [1 occurrences]
+   capitulos/03-el-rio.md   zone matched nothing
+```
+
+A declared zone that does not exist is a broken rule, the same class as a rule
+pointed at a renamed file. `rift list` prints the same line in yellow and still
+exits 0 — `list` reports, it never judges.
+
+**Zones resolve after masking and before `strip:`.** That ordering is the only one
+that works, and each half was a real bug. Resolving on raw text would split
+`unit: section` on a `##` **inside a code fence**. Stripping first would blank the
+very renderer macro a delimited bound is usually written against, making every
+zone in that rule unresolvable — and the rule green.
+
+**A zoned `measure` takes exact counts, not statistics.** `pattern:`, or
+`metric: word-count`. Every other metric with a zone is a config error, and so is
+`per:` — it turns a count into a ratio — and so is `expect: vs-siblings`, because
+with zones "the siblings" is ambiguous between the other zones of this file and
+the same zone in other files. A count over a span is as correct as a count over a
+file; a coefficient of variation over a span is not, because a zone is short
+enough that crude sentence splitting dominates.
+
+Zoned `measure` keys report the zone as well as the path — `chapters/ch01.md#2` —
+because a number out of bounds in one section of a forty-section chapter is not a
+fact about the chapter.
+
+**Two traps worth knowing before you reach for a structural zone:**
+
+- **An index-less `unit: paragraph` is not "the whole file".** It is the union of
+  the paragraph spans, and `paragraph_spans` drops headings, list items and table
+  rows. A `forbid` under it silently stops reporting a banned word in a heading.
+  If you want the whole file, use no zone.
+- **`include_quotes: true` cannot be reached through a paragraph zone.**
+  Blockquote lines are dropped from `paragraph_spans` regardless of masking, so a
+  rule that opted back into quoted prose loses it again the moment it adds one.
+  Use a delimited zone, or none.
+
+**`zone:` is not available on `require`.** `matcher.check` returns a bool and
+early-returns on the first file in the glob that matches — it is existential over
+the document set by design. Every request for a zoned `require` was a *per-file*
+claim (*the promise must land in the first 100 words*), and existentially all of
+them pass the moment one chapter in forty complies. A zone narrows where in a file
+the search happens; it cannot change what the question is asked over. It unlocks
+when `per_file:` does.
+
 ### `measure` counts, `forbid` locates
 
 Both can express "this text should be rare". Pick by what you need back: a

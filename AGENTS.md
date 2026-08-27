@@ -53,9 +53,16 @@ modules is a private helper.
 
 | Function | Contract |
 |---|---|
-| `check(root, entity, require) -> bool` | *is it anywhere?* Returns as soon as it knows. Reads the document **unmasked** — `require` asks whether something is documented, and a code fence is documentation. |
-| `find(root, entity, forbid) -> [(Path, int, str)]` | *where is it?* Visits every file and every occurrence, no early return. Reads **masked**. |
-| `unpermitted(root, allowed, permit) -> [(Path, int, str)]` | *what is here that should not be?* Takes the **whole allowed set** and walks the document once — unlike the two above, which take one entity and are called once per extracted string. |
+| `check(root, entity, require) -> bool` | *is it anywhere?* Returns as soon as it knows. Reads the document **unmasked** — `require` asks whether something is documented, and a code fence is documentation. Takes no zone; see the README for why. |
+| `find(root, entity, forbid, spans=None) -> [(Path, int, str)]` | *where is it?* Visits every file and every occurrence, no early return. Reads **masked**. |
+| `unpermitted(root, allowed, permit, spans=None) -> [(Path, int, str)]` | *what is here that should not be?* Takes the **whole allowed set** and walks the document once — unlike the two above, which take one entity and are called once per extracted string. |
+
+`spans` is a rule's resolved `zone:`, precomputed **once per file** by the caller
+and passed down. `None` means the rule has no zone; a dict means a file absent
+from it is not scanned. It is precomputed because `find` runs once per extracted
+entity, so resolving inside it would emit one unresolved-zone report per entity
+per file — 411 glossary terms over 30 chapters is 12,330 identical failures from
+one broken bound. A site counts only if **fully contained** in a span.
 
 **`src/rift/text.py` — normalisation shared by the matcher and the metrics.**
 
@@ -66,7 +73,13 @@ modules is a private helper.
 | `tokens` / `token_spans` | `\w+`, Unicode. `tokens` lowercases and drops offsets; `token_spans` keeps both, which is what `permit` needs. |
 | `sentences` / `sentence_spans` / `sentence_start_offsets` | crude splitting on purpose. `sentence_start_offsets` gives the first *word* offset, not the span start. |
 | `paragraphs` / `paragraph_spans` | runs of non-blank lines, block elements removed. |
+| `section_spans(text)` | the text split at every `##`, contiguous and gapless. The preamble is zone 0, emitted even when empty. |
+| `zone_spans(text, zone)` | the single place either `zone:` form is interpreted. Takes **already-masked** text. Returns `[]` for a zone this document cannot resolve — the empty list is the signal, not an exception, because the caller has to tell "no zone" from "empty selection". |
 | `line_of(text, pos)` | 1-indexed line for an offset. |
+
+`_H2` lives here rather than in `measure` because both the `sections` metric and
+`section_spans` need it, and `text` is the base of the module graph — `measure`
+imports from here, so the reverse is a circular import that fails at load.
 
 The `*_spans` functions are the primitives; the string and token versions are thin
 wrappers over them. **Change a span function and the metrics move** — the metric
@@ -81,15 +94,33 @@ roster of rule kinds; `_rule_kind` rejects a rule carrying more than one. Both
 `check_cmd` and `list_cmd` dispatch on kind **explicitly**, with a final `else`
 that fails loudly — see the warning below.
 
+`_kinds_or_exit` validates every rule before any of them runs, which is what its
+docstring promises and what `_validate_zone` relies on: a typo in rule twenty
+must not cost nineteen rules of work and nineteen printed results first.
+
+Two return types are pairs rather than lists, and in both cases the second half
+is the files whose zone matched nothing. `_occurrences` returns
+`(sites, unresolved)` because both callers format a site as `{path}:{line}`, so
+carrying an unresolved entry through the site tuple would mean inventing a fake
+`:0`. `_values` returns `(values, unresolved)` and its keys are `Path` when the
+spec is unzoned and `(Path, zone_index)` when it is not — `_key_path` and
+`_render_key` are the two places that difference is handled.
+
 ## rift lints itself
 
-`.rift.yaml` points rift at rift: eleven rules over its own API rosters, the paths
+`.rift.yaml` points rift at rift: twelve rules over its own API rosters, the paths
 its docs name, and its own prose. `rift check` runs in CI beside the suite.
 
-**If you add a rule kind, a matcher, an extractor key, an `expect` predicate or a
-metric, a rule here fails until you document it.** That is the whole point — those
-five rosters are extracted from the code that dispatches on them, so the config
-cannot drift from the implementation without someone noticing.
+**If you add a rule kind, a matcher, an extractor key, an `expect` predicate, a
+metric or a `zone` sub-key, a rule here fails until you document it.** That is the
+whole point — those six rosters are extracted from the code that dispatches on
+them, so the config cannot drift from the implementation without someone noticing.
+
+The zone rule uses `wrap:` rather than `as: table_cell`, and the reason
+generalises: two of the four keys are the ordinary English words *after* and
+*before*, and `index` was already satisfied by an unrelated `a/index.md` in the
+extractors table. A substring match pins the text, not the claim. When a roster's
+members are common words, require a cell of their own.
 
 Two of rift's own features are deliberately unused, and the config says why:
 `measure`/`vs-siblings` needs four files in a set and there are two know-how docs,

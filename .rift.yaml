@@ -80,6 +80,27 @@ rules:
       in: "README.md"
       as: table_cell
 
+  # The `zone` sub-keys match none of the five rosters above — they are not a
+  # rule kind, a matcher, an extractor key, an `expect` predicate or a metric —
+  # so before this rule the README's zone section was, as far as the build was
+  # concerned, entirely optional. `_ZONE_KEYS` exists in `cli.py` to be walked
+  # from here.
+  #
+  # `wrap:` rather than `as: table_cell`, and that is the whole rule. Two of the
+  # four keys are the common English words "after" and "before", which appear in
+  # some table cell on almost any page, and `index` was already satisfied by the
+  # unrelated `a/index.md` in the extractors table. A substring match pins the
+  # text rather than the claim; requiring a backticked cell of its own is what
+  # makes deleting a row turn this red.
+  - name: "every zone sub-key is documented"
+    severity: error
+    extract:
+      file: "src/rift/cli.py"
+      regex: '^    "([a-z]+)",'
+    require:
+      in: "README.md"
+      wrap: '\| `${entity}` \|'
+
   - name: "every CLI command has its own section"
     severity: error
     extract:
