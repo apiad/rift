@@ -481,3 +481,16 @@ def test_unpermitted_with_an_empty_permitted_set_reports_everything(repo, write)
     """
     write("docs/a.md", "alpha beta\n")
     assert len(unpermitted(repo, set(), PERMIT)) == 2
+
+
+def test_exclude_survives_a_line_wrap(repo, write):
+    """`exclude` had the same defect `as: word` did.
+
+    Found by pointing rift at its own README, where the exempting phrase spans
+    a line break — which is the normal shape of a phrase in wrapped prose, so
+    the feature was close to unusable on the documents it was written for.
+    """
+    write("docs/a.md", "it will never tell you\nthat prose is machine-written, or good.\n")
+    forbid = {"in": "docs/*.md", "as": "word",
+              "exclude": ["never tell you that prose is machine-written"]}
+    assert find(repo, "machine-written", forbid) == []

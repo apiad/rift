@@ -13,6 +13,12 @@ All notable changes to this project are documented here. Format: Keep a Changelo
 
 ### Fixes
 
+- **`forbid.exclude` did not survive a line wrap.** It compiled the phrase with
+  `re.escape`, so the space in an exempting phrase was a literal space — and an
+  exempting phrase in wrapped prose spans a line break as its *normal* shape,
+  not as an edge case. Same defect `as: word` had, in the feature added one
+  commit later. Both now share `_flexible_whitespace`. Found by pointing rift at
+  its own README.
 - **The `regex:` extractor silently dropped entities after an unmatched
   alternation branch.** It took `group(1)` unconditionally, so a branch that did
   not participate handed `None` to `.strip()`, and the `except Exception` around

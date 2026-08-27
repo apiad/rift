@@ -143,12 +143,22 @@ def _exclusions(phrases, flags: int) -> list[re.Pattern]:
 
     Literal, not regex, and matched with the rule's own flags — a
     case-sensitive rule must not acquire a case-insensitive exemption.
+
+    Whitespace inside a phrase matches any run, for the same reason `as: word`
+    does: an exempting phrase in wrapped prose spans a line break, which is its
+    normal shape rather than an edge case. Found by pointing rift at its own
+    README, where the exemption failed on exactly that.
     """
     if not phrases:
         return []
     if isinstance(phrases, str):
         phrases = [phrases]
-    return [re.compile(re.escape(p), flags) for p in phrases]
+    return [re.compile(_flexible_whitespace(p), flags) for p in phrases]
+
+
+def _flexible_whitespace(literal: str) -> str:
+    """An escaped literal whose internal whitespace matches any run."""
+    return r'\s+'.join(re.escape(part) for part in literal.split())
 
 
 def _word_pattern(entity: str) -> str | None:
@@ -166,7 +176,7 @@ def _word_pattern(entity: str) -> str | None:
     parts = entity.split()
     if not parts:
         return None
-    return r'\b' + r'\s+'.join(re.escape(p) for p in parts) + r'\b'
+    return r'\b' + _flexible_whitespace(entity) + r'\b'
 
 
 def _pattern_for(entity: str, as_type: str, wrap: str | None = None) -> str | None:
