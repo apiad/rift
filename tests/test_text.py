@@ -166,6 +166,7 @@ from rift.text import (
     sentence_spans,
     sentence_start_offsets,
     sentences,
+    token_spans,
     tokens,
 )
 
@@ -203,3 +204,15 @@ def test_sentence_start_offsets_skips_leading_whitespace():
     doc = "   Alpha runs fast.\n"
     assert sentence_start_offsets(doc) == {doc.index("Alpha")}
     assert 0 not in sentence_start_offsets(doc)
+
+
+def test_token_spans_carry_the_offset_and_the_source_form():
+    """`tokens()` lowercases and discards offsets; `permit` needs both back —
+    the offset to report a line, the source form to judge `of:`."""
+    doc = "Alpha and BETA.\n"
+    assert token_spans(doc) == [(0, "Alpha"), (6, "and"), (10, "BETA")]
+
+
+def test_tokens_is_the_lowercased_projection_of_token_spans():
+    doc = "# Heading\n\nAlpha and BETA, 1936.\n"
+    assert tokens(doc) == [t.lower() for _, t in token_spans(doc)]

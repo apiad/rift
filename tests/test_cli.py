@@ -544,3 +544,89 @@ def test_max_files_does_not_apply_the_zero_default_per_file(repo, write):
     write("chapters/ch01.md", "[^brooks]: One.\nand again [^brooks]:\n")
     config(write, RULE_LABELS)
     assert runner.invoke(main, ["check", str(repo)]).exit_code == 0
+
+
+# --- permit (slice D) ---
+
+PERMIT_RULE = {
+    "name": "accepted vocabulary",
+    "severity": "error",
+    "extract": {"file": "dict/words.txt", "lines": True},
+    "permit": {"in": "chapters/*.md"},
+}
+
+
+def test_check_fails_on_a_token_outside_the_permitted_set(repo, write):
+    write("dict/words.txt", "alpha\nbeta\n")
+    write("chapters/ch01.md", "alpha beta gamma\n")
+    config(write, PERMIT_RULE)
+
+    result = runner.invoke(main, ["check", str(repo)])
+    assert result.exit_code == 1
+    assert "gamma" in result.output
+    assert "unpermitted" in result.output
+
+
+def test_check_passes_when_every_token_is_permitted(repo, write):
+    write("dict/words.txt", "alpha\nbeta\n")
+    write("chapters/ch01.md", "alpha beta\n")
+    config(write, PERMIT_RULE)
+
+    result = runner.invoke(main, ["check", str(repo)])
+    assert result.exit_code == 0
+
+
+def test_list_ranks_unpermitted_tokens_by_frequency(repo, write):
+    """The triage surface. `check` reports sites; `list` reports vocabulary,
+    because a thousand flat sites is not a worklist and a ranked vocabulary is.
+    """
+    write("dict/words.txt", "alpha\n")
+    write("chapters/ch01.md", "alpha zzz zzz\nzzz qqq alpha\n")
+    config(write, PERMIT_RULE)
+
+    result = runner.invoke(main, ["list", str(repo)])
+    assert result.exit_code == 0
+    assert result.output.index("zzz") < result.output.index("qqq")
+
+
+def test_check_exits_two_on_a_malformed_of_pattern(repo, write):
+    """A typo'd pattern must fail loudly, not make the rule silently green."""
+    write("dict/words.txt", "alpha\n")
+    write("chapters/ch01.md", "alpha\n")
+    config(write, {**PERMIT_RULE, "permit": {"in": "chapters/*.md", "of": "[unclosed"}})
+
+    result = runner.invoke(main, ["check", str(repo)])
+    assert result.exit_code == 2
+    # Pin the reason, not just the code: before `permit` had a branch, an
+    # unhandled kind fell into `measure` and exited 2 for an unrelated reason.
+    assert "malformed of:" in result.output
+
+
+def test_an_unhandled_rule_kind_fails_loudly_instead_of_being_measured(repo, write):
+    """The regression guard for `14ce59e`.
+
+    `check` and `list` dispatched `if require / elif forbid / else measure`, so
+    any kind without a branch was silently treated as a measure rule. This pins
+    the `else` that replaced that fallback.
+    """
+    import rift.cli as cli_module
+
+    write("chapters/ch01.md", "alpha\n")
+    config(write, {"name": "bogus", "bogus": {"in": "chapters/*.md"}})
+    monkey = cli_module.RULE_KINDS
+    cli_module.RULE_KINDS = monkey + ("bogus",)
+    try:
+        result = runner.invoke(main, ["check", str(repo)])
+    finally:
+        cli_module.RULE_KINDS = monkey
+    assert result.exit_code == 2
+    assert "no handler" in result.output
+
+
+def test_a_rule_carrying_permit_and_forbid_is_rejected(repo, write):
+    write("dict/words.txt", "alpha\n")
+    config(write, {**PERMIT_RULE, "forbid": {"in": "chapters/*.md"}})
+
+    result = runner.invoke(main, ["check", str(repo)])
+    assert result.exit_code == 2
+    assert "more than one kind" in result.output

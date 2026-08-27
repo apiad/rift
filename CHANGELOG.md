@@ -16,6 +16,22 @@ All notable changes to this project are documented here. Format: Keep a Changelo
 
 ### Features
 
+- **`permit` — a fourth rule kind.** The mirror of `forbid`: where `forbid` bans
+  the extracted set, `permit` bans everything but it. rift could say *this must
+  appear in the docs* and *this must not appear in the prose*, but not *nothing
+  outside this set may appear*. Spelling is one instance; "no proper noun outside
+  the roster" and "no acronym outside the glossary" are the others. `of:` selects
+  which tokens the rule judges and sees the token **as written**, before
+  lowercasing, which is what makes `^[A-Z]` mean "proper noun". No dictionary
+  ships with rift — vendor one with `aspell dump master en_US`.
+  - `rift list` reports *vocabulary* for a permit rule — unique tokens with
+    counts, most frequent first — rather than sites. Without that surface the
+    first run against a real document set is untriageable.
+  - A malformed `of:` pattern **exits 2**. `find` swallows `re.error`, which
+    makes a typo'd rule silently green; a new rule kind is not bound by that.
+  - Both `check` and `list` now dispatch on kind explicitly, with an `else` that
+    fails loudly. `if/elif/else` with `measure` as the fallback is how `list`
+    came to raise `KeyError` on every measure rule.
 - **`as: sentence_start` matcher** — bans a word only where it opens a sentence,
   which no config could express before: every pattern anchors `^` per line, and a
   sentence beginning mid-line has no anchor. Implemented as the ordinary literal

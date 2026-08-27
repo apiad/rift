@@ -70,7 +70,18 @@ def tokens(text: str) -> list[str]:
     per-language rule, which is what makes every metric above it work unchanged
     on Spanish. Callers pass already-masked text; this does not mask.
     """
-    return [m.group(0).lower() for m in _TOKEN.finditer(text)]
+    return [t.lower() for _, t in token_spans(text)]
+
+
+def token_spans(text: str) -> list[tuple[int, str]]:
+    """The same tokens as `tokens`, as (offset, source form).
+
+    `tokens` lowercases and throws the offsets away, which is right for every
+    metric and wrong for `permit`: an allowlist has to report a line, which
+    needs the offset, and has to judge `of:` against the form the author wrote,
+    which needs the token unfolded.
+    """
+    return [(m.start(), m.group(0)) for m in _TOKEN.finditer(text)]
 
 
 def sentences(text: str) -> list[list[str]]:

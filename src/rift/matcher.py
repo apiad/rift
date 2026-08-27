@@ -2,7 +2,7 @@ import re
 from pathlib import Path
 
 from .extractor import resolve_globs
-from .text import line_of, mask, sentence_start_offsets
+from .text import line_of, mask, sentence_start_offsets, token_spans
 
 
 def check(root: Path, entity: str, require: dict) -> bool:
@@ -85,6 +85,50 @@ def find(root: Path, entity: str, forbid: dict) -> list[tuple[Path, int, str]]:
             if starts is not None and m.start() not in starts:
                 continue
             sites.append((doc_file, line_of(text, m.start()), entity))
+    return sites
+
+
+def unpermitted(root: Path, allowed: set[str], permit: dict) -> list[tuple[Path, int, str]]:
+    """Every prose token *outside* the permitted set, as (path, line, token).
+
+    The mirror of `find`: where `forbid` bans the extracted set, `permit` bans
+    everything but it. Spelling is one instance — "no proper noun outside the
+    roster" and "no acronym outside the glossary" are the others, and on a book
+    with a large glossary they are worth more.
+
+    Structurally unlike `check` and `find`, which take one entity and are called
+    once per extracted string: this takes the whole set and walks the document
+    once, because the question is about the document's vocabulary rather than
+    about any one word.
+
+    A malformed `of:` pattern raises rather than returning nothing. `find`
+    swallows `re.error`, which means a typo'd pattern makes a rule silently
+    green — the repo's documented blind spot, and the one failure mode a linter
+    cannot afford. A new rule kind is not bound by that choice.
+    """
+    of = permit.get("of")
+    of_pattern = re.compile(of) if of else None
+    case_insensitive = permit.get("case_insensitive", False)
+    include_quotes = permit.get("include_quotes", False)
+
+    allow = {a.lower() for a in allowed} if case_insensitive else set(allowed)
+
+    sites = []
+    for doc_file in resolve_globs(root, permit.get("in", "docs/**/*.md")):
+        try:
+            text = mask(doc_file.read_text(), include_quotes)
+        except Exception:
+            continue
+        for pos, raw in token_spans(text):
+            # A year is not a spelling. This is the only judgment built in, and
+            # it is a fact about tokens rather than a taste about prose.
+            if raw.isdigit():
+                continue
+            if of_pattern is not None and not of_pattern.search(raw):
+                continue
+            if (raw.lower() if case_insensitive else raw) in allow:
+                continue
+            sites.append((doc_file, line_of(text, pos), raw))
     return sites
 
 

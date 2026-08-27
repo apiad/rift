@@ -1,7 +1,9 @@
 import math
+import re
 import sys
 import click
 import yaml
+from collections import Counter
 from pathlib import Path
 from statistics import mean, pstdev
 from rich.console import Console
@@ -10,14 +12,14 @@ from rich.table import Table
 from . import measure
 from .extractor import extract
 from .text import strip_patterns
-from .matcher import check, find, resolve_globs
+from .matcher import check, find, resolve_globs, unpermitted
 
 console = Console()
 
-# The rule kinds. A rule carries exactly one; `extract` feeds the first two,
+# The rule kinds. A rule carries exactly one; `extract` feeds all but `measure`,
 # since where a set of strings comes from is orthogonal to what you assert
 # about it.
-RULE_KINDS = ("require", "forbid", "measure")
+RULE_KINDS = ("require", "forbid", "permit", "measure")
 
 
 class ConfigError(Exception):
@@ -210,7 +212,19 @@ def check_cmd(path, config):
             sites = _occurrences(root, rule)
             failures = [f"{p.relative_to(root)}:{line}   {entity}" for p, line, entity in sites]
             label = "occurrences"
-        else:
+        elif kind == "permit":
+            entities = extract(root, rule["extract"])
+            try:
+                sites = unpermitted(root, entities, rule["permit"])
+            except re.error as e:
+                console.print(
+                    f"[red]Config error:[/red] in rule {rule['name']!r}: "
+                    f"malformed of: pattern — {e}"
+                )
+                sys.exit(2)
+            failures = [f"{p.relative_to(root)}:{line}   {token}" for p, line, token in sites]
+            label = "unpermitted"
+        elif kind == "measure":
             try:
                 values = _values(root, rule["measure"])
             except ConfigError as e:
@@ -222,6 +236,16 @@ def check_cmd(path, config):
                 for path, value, why in out_of_bounds
             ]
             label = "out of bounds"
+        else:
+            # Unreachable while every kind in RULE_KINDS has a branch above, and
+            # that is the point: `if/elif/else` with `measure` as the fallback is
+            # how `list` came to raise KeyError on every measure rule. A fifth
+            # kind must fail here, loudly, rather than be silently measured.
+            console.print(
+                f"[red]Config error:[/red] rule {rule['name']!r} has kind "
+                f"{kind!r}, which has no handler"
+            )
+            sys.exit(2)
 
         for note in notes:
             console.print(f"[yellow]⚠[/yellow]  {rule['name']}  [yellow]{note}[/yellow]")
@@ -288,7 +312,25 @@ def list_cmd(path, config, rule):
             console.print(f"\n[bold]{r['name']}[/bold]  ({len(sites)} occurrences)")
             for path, line, entity in sites:
                 console.print(f"  [red]✗[/red] {path.relative_to(root)}:{line}   {entity}")
-        else:
+        elif kind == "permit":
+            # `check` reports sites; `list` reports vocabulary. The asymmetry is
+            # the whole point: a first run against a real book emits sites in the
+            # thousands, and a flat site list is untriageable where a
+            # frequency-ranked vocabulary is a worklist.
+            entities = extract(root, r["extract"])
+            try:
+                sites = unpermitted(root, entities, r["permit"])
+            except re.error as e:
+                console.print(f"[red]Config error:[/red] in rule {r['name']!r}: {e}")
+                sys.exit(2)
+            counts = Counter(token for _, _, token in sites)
+            console.print(
+                f"\n[bold]{r['name']}[/bold]  "
+                f"({len(counts)} unpermitted, {len(sites)} occurrences)"
+            )
+            for token, n in counts.most_common():
+                console.print(f"  [red]✗[/red] {token}   ({n})")
+        elif kind == "measure":
             # For a measure rule the measured files are the entities, so the
             # per-entity report is every file's value — passing ones included,
             # since a number you can see beats a number you have to infer.

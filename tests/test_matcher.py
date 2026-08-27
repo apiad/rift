@@ -1,3 +1,7 @@
+import re
+
+import pytest
+
 from rift.matcher import check
 
 MENTION = {"in": "docs/**/*.md", "as": "mention"}
@@ -373,3 +377,71 @@ def test_sentence_start_finds_an_indented_paragraph_opener(repo, write):
     write("docs/a.md", "   However it began.\n")
     sites = find(repo, "However", SENTENCE_START)
     assert [line for _, line, _ in sites] == [1]
+
+
+# --- permit (slice D) ---
+
+from rift.matcher import unpermitted
+
+PERMIT = {"in": "docs/*.md"}
+
+
+def test_unpermitted_reports_a_token_outside_the_set(repo, write):
+    write("docs/a.md", "alpha beta\ngamma\n")
+    sites = unpermitted(repo, {"alpha", "beta"}, PERMIT)
+    assert [(line, tok) for _, line, tok in sites] == [(2, "gamma")]
+
+
+def test_unpermitted_reports_nothing_when_every_token_is_allowed(repo, write):
+    write("docs/a.md", "alpha beta\n")
+    assert unpermitted(repo, {"alpha", "beta"}, PERMIT) == []
+
+
+def test_unpermitted_reports_every_occurrence_not_every_token(repo, write):
+    """Multiplicity, pinned as `find`'s was: an implementation that folded to a
+    set of unknown words would report one site here, not three."""
+    write("docs/a.md", "gamma and gamma\n")
+    write("docs/b.md", "gamma\n")
+    sites = unpermitted(repo, {"and"}, PERMIT)
+    assert len(sites) == 3
+
+
+def test_unpermitted_never_judges_a_number(repo, write):
+    """A year is not a spelling."""
+    write("docs/a.md", "alpha 1936 42\n")
+    assert unpermitted(repo, {"alpha"}, PERMIT) == []
+
+
+def test_unpermitted_of_restricts_which_tokens_are_judged(repo, write):
+    write("docs/a.md", "Alpha beta Gamma\n")
+    sites = unpermitted(repo, {"Alpha"}, {**PERMIT, "of": "^[A-Z]"})
+    assert [tok for _, _, tok in sites] == ["Gamma"]
+
+
+def test_unpermitted_of_judges_the_source_form_not_the_lowercased_one(repo, write):
+    """`of: '^[A-Z]'` is the roster case, and it can only work if the token
+    reaches the filter unfolded. An implementation that lowercased first would
+    match nothing here and report zero sites."""
+    write("docs/a.md", "Alpha Beta gamma\n")
+    sites = unpermitted(repo, {"Alpha"}, {**PERMIT, "of": "^[A-Z]"})
+    assert [tok for _, _, tok in sites] == ["Beta"]
+
+
+def test_unpermitted_case_insensitive_folds_membership(repo, write):
+    write("docs/a.md", "Alpha BETA\n")
+    assert unpermitted(repo, {"alpha", "beta"}, PERMIT) != []
+    assert unpermitted(repo, {"alpha", "beta"}, {**PERMIT, "case_insensitive": True}) == []
+
+
+def test_unpermitted_reads_masked_prose(repo, write):
+    """A code fence is not prose, so its identifiers are not misspellings."""
+    write("docs/a.md", "```\nqqq zzz\n```\n\nalpha\n")
+    assert unpermitted(repo, {"alpha"}, PERMIT) == []
+
+
+def test_unpermitted_raises_on_a_malformed_of_pattern(repo, write):
+    """A typo'd pattern must not make the rule silently green — the one failure
+    mode rift cannot afford. Unlike `find`, this does not swallow re.error."""
+    write("docs/a.md", "alpha\n")
+    with pytest.raises(re.error):
+        unpermitted(repo, {"alpha"}, {**PERMIT, "of": "[unclosed"})

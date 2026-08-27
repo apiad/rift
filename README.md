@@ -39,17 +39,18 @@ error-severity rule failed · `2` no config file found, or a malformed rule.
 
 ## Config
 
-`.rift.yaml` is a list of rules. A rule carries **exactly one** of three shapes;
+`.rift.yaml` is a list of rules. A rule carries **exactly one** of four shapes;
 more than one is a config error.
 
 | Shape | Asks | Reports |
 |---|---|---|
 | `extract` + `require` | does each extracted string appear? | missing entities |
 | `extract` + `forbid` | where does each extracted string appear? | `file:line` sites |
+| `extract` + `permit` | what appears that is **not** in the extracted set? | `file:line` sites |
 | `measure` + `expect` | what is this number, and is it in bounds? | values and thresholds |
 
-`extract` feeds the first two: where a set of strings comes from is orthogonal to
-what you then assert about it.
+`extract` feeds the first three: where a set of strings comes from is orthogonal
+to what you then assert about it.
 
 ```yaml
 rules:
@@ -174,6 +175,59 @@ literal, and matched with the rule's own `case_insensitive` setting.
 
 rift ships **no banned list**. What counts as bad phrasing is taste, and taste
 lives in your `.rift.yaml`.
+
+### `permit` — an allowlist
+
+The mirror of `forbid`. Where `forbid` bans the extracted set, `permit` bans
+everything **but** it, and reports the same `file:line` sites.
+
+```yaml
+  - name: "no proper noun outside the roster"
+    severity: warning
+    extract:
+      file: "glossary.yaml"
+      yaml_keys: "people"
+    permit:
+      in: "chapters/*.md"
+      of: '^[A-Z]'
+```
+
+```
+⚠  no proper noun outside the roster  [2 unpermitted]
+   chapters/ch02.md:41   Corbató
+   chapters/ch05.md:9    Multics
+```
+
+Read masked, exactly like `forbid`, and `include_quotes: true` works the same
+way. The unit is the token (`\w+`, Unicode), and **all-digit tokens are never
+judged** — a year is not a spelling. That is the only judgment built in.
+
+| Key | Means |
+|---|---|
+| `of: <regex>` | only tokens matching this are subject to the rule. Absent, every token is judged. Matched against the token **as written**, before lowercasing — which is what makes `^[A-Z]` mean "proper noun" rather than nothing at all. |
+| `case_insensitive: true` | membership is decided on the folded form. `of:` still sees the source form. |
+
+There is no `exclude`, no `max_per_file` and no `max_files`: the permitted set
+*is* the allowance, and a second one on top of it would be two ways to spell the
+same exemption. A malformed `of:` pattern **exits 2** rather than reporting
+nothing — a typo that makes a rule silently green is the one failure a linter
+cannot afford.
+
+**`rift list` is the surface that makes this usable.** `check` reports sites;
+`list` reports *vocabulary* — unique unpermitted tokens with their counts, most
+frequent first. A first run against a real book emits sites in the thousands, and
+a flat site list is untriageable where a ranked vocabulary is a worklist.
+
+**Spelling is one instance of this shape**, and rift ships no dictionary — same
+principle as `forbid` shipping no banned list. Vendor one:
+
+```bash
+aspell dump master en_US > dict/en.txt
+```
+
+Then point `extract` at `file: "dict/*.txt"`, so the vendored wordlist and a
+hand-curated `dict/terms.txt` union without the 120k-line blob ever churning —
+the diff a reviewer reads is the term file.
 
 ### `measure` — statistics over a file set
 
