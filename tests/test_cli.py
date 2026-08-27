@@ -392,6 +392,16 @@ def test_an_unknown_metric_is_a_config_error(repo, write):
     assert "vibes" in result.output
 
 
+def test_an_unknown_metric_is_a_config_error_under_list_too(repo, write):
+    """`list` had no ConfigError handler, so a bad metric tracebacked there."""
+    chapters(write, ch01=CH3)
+    config(write, measure_rule(measure={"files": "chapters/*.md", "metric": "vibes"}))
+
+    result = runner.invoke(main, ["list", str(repo)])
+    assert result.exit_code == 2
+    assert "vibes" in result.output
+
+
 def test_measure_counts_as_a_kind_for_the_multiplicity_check(repo, write):
     config(write, {**measure_rule(), "forbid": {"in": "chapters/*.md"}})
 

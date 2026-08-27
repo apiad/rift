@@ -334,8 +334,12 @@ def list_cmd(path, config, rule):
             # For a measure rule the measured files are the entities, so the
             # per-entity report is every file's value — passing ones included,
             # since a number you can see beats a number you have to infer.
-            values = _values(root, r["measure"])
-            out_of_bounds, notes = _apply_expect(values, r.get("expect", {}))
+            try:
+                values = _values(root, r["measure"])
+                out_of_bounds, notes = _apply_expect(values, r.get("expect", {}))
+            except ConfigError as e:
+                console.print(f"[red]Config error:[/red] in rule {r['name']!r}: {e}")
+                sys.exit(2)
             why: dict = {}
             for path, _, reason in out_of_bounds:
                 why.setdefault(path, []).append(reason)

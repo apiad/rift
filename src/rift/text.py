@@ -14,6 +14,12 @@ _HTML_TAG = re.compile(r'<[^>\n]*>')
 _LINK_URL = re.compile(r'(?<=\])\([^)\n]*\)')
 _QUOTE = re.compile(r'^[ \t]*>.*$', re.MULTILINE)
 
+# `##` only, excluding `###`. Lives here rather than in `measure` because both
+# the `sections` metric and `section_spans` need it, and `text` is the base of
+# the module graph — `measure` imports from here, so the reverse would be a
+# circular import. A config has one definition of "section", not two.
+_H2 = re.compile(r'^[ \t]*##(?!#)[ \t]+', re.MULTILINE)
+
 _TOKEN = re.compile(r'\w+')
 _TERMINATOR = re.compile(r'[.!?…]+\s+')
 # Characters a sentence may open with *before* its first letter. `¿` and `¡` are

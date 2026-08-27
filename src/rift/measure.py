@@ -14,10 +14,9 @@ import re
 from collections import Counter
 from statistics import mean, pstdev
 
-from .text import mask, paragraphs, sentences, tokens
+from .text import _H2, mask, paragraphs, sentences, tokens
 
 _HEADING = re.compile(r'^[ \t]*(#{1,6})[ \t]+(.*)$', re.MULTILINE)
-_H2 = re.compile(r'^[ \t]*##(?!#)[ \t]+', re.MULTILINE)
 _H1 = re.compile(r'^[ \t]*#(?!#)[ \t]+')
 
 
