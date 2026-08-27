@@ -16,6 +16,15 @@ from a `.rift.yaml`. Slice 0 changes no behaviour and unblocks everything after 
   whitespace, `permit.strip` markers, the `stats` third of a test). For every
   test here, ask: *would this pass against an implementation that ignores the
   feature?* If yes, the fixture is wrong.
+- **Verify the artifact, never something adjacent to it.** AGENTS.md §5, and it
+  applies to claims in docs exactly as it does to green builds. Four assertions in
+  the spec and this plan were wrong the same way: *"`_values` reads masked"* (true
+  of every metric, false of `_values`), *"`_occurrences` builds failure strings"*
+  (true of the layer above it), *"the self-lint would catch an undocumented key"*
+  (true of five neighbouring keys), *"rejecting at `metric:` is strictly stronger"*
+  (true of the case that prompted it). Each is a correct sentence about something
+  **next to** the thing being claimed, which is why all four read as obviously
+  true. Grep before asserting anything about this codebase.
 - **After touching `matcher.py`, mutation-test.** Break `_matches` to
   `return True` and confirm the suite goes red.
 - **An unzoned rule must behave exactly as before.** The existing 238 tests
@@ -82,7 +91,7 @@ Delivers: every malformed zone exits 2 before any rule runs.
 |---|---|---|
 | 2.1 | `cli._validate_zone(rule, kind)` raising `ConfigError`, called from `_kinds_or_exit`. Rejects: both forms in one zone; `zone` on `require`; `zone` beside `require.exists`; `metric:` not in the allowlist with a zone; `per:` with a zone; **`expect.vs-siblings` with a zone**. | One test per rejection, each asserting exit 2 **and** that the message names the rule. |
 | 2.1b | **Staged rejection:** `_validate_zone` also rejects `zone:` on any kind whose slice has not landed yet, and the rejection for that kind is deleted as its slice arrives. | After slice 2, a well-formed `zone:` on a `forbid` rule exits 2 rather than being silently ignored. |
-| 2.4 | `_apply_expect`'s degenerate-set guard counts **distinct files**, not entries. | A 3-file corpus with 5 sections each is 15 zoned values; the guard must still fire, because the set is really three documents. |
+| 2.4 | `_apply_expect`'s degenerate-set guard counts **distinct files**, not entries. | Direct unit test on `_apply_expect` with a hand-built zoned dict — **unreachable by config** once 2.1 lands, kept as depth against a future relaxation. See the note below. |
 | 2.2 | The allowlist is `_ZONE_SAFE_METRICS = {"word-count"}`, plus `pattern:` which is not a metric. | `metric: word-count` + zone is **accepted**; `metric: sentence-length-cv` + zone exits 2; `metric: burrows-delta` + zone exits 2. |
 | 2.3 | Validation runs in `_kinds_or_exit`, whose docstring already promises a malformed config fails "before any work". | A config whose **twentieth** rule has a bad zone prints **no** rule results before exiting 2. |
 
@@ -94,6 +103,18 @@ config would validate, run, and compare each `(file, zone)` against every other 
 mixing "other zones of this file" with "the same zone in other files" into a third
 meaning nobody chose, which is the exact ambiguity the spec refuses to resolve
 silently. Both rejections are required.
+
+**2.4 is deliberately unreachable, and that is why its verify says so.** The
+degenerate-set guard sits *after* `if k is None: return` in `_apply_expect`, so it
+only runs when `vs-siblings` is set — and 2.1 now rejects `vs-siblings` with a
+zone before either command reaches it, since `check_cmd` and `list_cmd` both call
+`_kinds_or_exit` first. The miscount was real but 2.1's fix dissolved the path to
+it. The task stays because `_apply_expect` is a pure function that takes a direct
+unit test, and the guard is what stops a future `per_file:` — or any relaxation of
+the `vs-siblings` rejection — from silently reintroducing it. By this plan's own
+vacuity rule a test that cannot be *constructed* is worse than one that cannot
+fail, because at least the second one runs; so the verify column names the shape
+of the test rather than a config nobody can write.
 
 **2.2 is pinned from both sides deliberately.** Asserting only the rejections
 passes against a blanket ban, which would silently drop the `word-count` case the
