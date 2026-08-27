@@ -72,6 +72,24 @@ over `glossary.yaml`, from `regex:`, or from an inline `list:`.
 - **No `exclude`, no `max_per_file`, no `max_files`.** The permitted set *is* the
   allowance; a second allowance mechanism on top of it would be two ways to spell
   the same exemption.
+- **`strip:`**, as `measure` has it. Marker syntax is apparatus, not prose:
+  `[Enigma]{~encryption}` otherwise reports `encryption`, and a marker whose slug
+  repeats its display text reports the name twice over. Slug fragments are not
+  words anyone misspelled, and no dictionary should have to absorb them.
+- **An empty permitted set reports every token** — the opposite polarity to
+  `require`, and deliberate. A malformed source file makes the extractor yield
+  nothing, and zero entities makes a `require` rule *silently pass*; that is the
+  repo's oldest known gap. For `permit` the same emptiness must be maximally
+  loud, so it needs its own test rather than inheriting `require`'s.
+- **`strip:` applies**, as it does to `measure`. Marker syntax is apparatus, not
+  prose: `[Enigma]{~encryption}` otherwise reports `encryption`, and a marker
+  whose slug repeats its display text reports the name twice over. Slug fragments
+  are not words anyone misspelled and no dictionary should absorb them.
+- **An empty permitted set reports every token.** This is the opposite polarity
+  to `require` and it is deliberate. A malformed source file makes the extractor
+  yield nothing, and zero entities makes a `require` rule *silently pass* — the
+  repo's known blind spot. For `permit` the same emptiness must be maximally
+  loud, so it needs its own test rather than inheriting `require`'s.
 
 ### Report shape
 
@@ -242,6 +260,35 @@ Per `AGENTS.md`, which is not negotiable here:
   taste that fires on deliberate long sentences — the "yeah, that's fine actually"
   failure that `know-how/writing-rules.md` says disqualifies a rule.
 
+- **`strip:` for `forbid`.** `permit` needs it and has it. Whether `forbid` should
+  take it too is a real question — a banned word inside a marker slug is a false
+  site today — but it changes a shipped rule kind with existing configs behind it,
+  and it does not block this work. Revisit once `permit` is in use.
+
+- **`permit` as a check on API names in a technical doc.** It reads masked prose,
+  so inline code and fences are blank to it and a README's backticked identifiers
+  are invisible. `require` is the tool for that question, and this is precisely
+  why `require` alone reads the document unmasked. Recorded because the attempt to
+  dogfood `permit` on rift's own README is what surfaced it.
+
 - **Wiring `permit` into `books-tsoc`.** The mechanism lands first. Landing it
   together with a thousand-token triage would make it impossible to tell which of
   the two broke.
+
+- **`strip:` for `forbid`.** `permit` needs it and gets it. Whether `forbid`
+  should also take it is a real question — a banned word inside a marker slug is
+  a false site today — but it is a change to a shipped rule kind with existing
+  configs behind it, and it does not block this work. Revisit once `permit` is in
+  use.
+
+- **Automatic dictionary generation.** rift never writes a wordlist. `aspell dump`
+  is a documented recipe, not a feature.
+
+---
+
+*This design absorbed `docs/permit-and-sentence-scope-design.md`, an independent
+spec for the same feature written in a parallel session 46 seconds earlier
+(`6c9109e`). The two reached the same conclusions; that one contributed the
+`strip:` requirement and the empty-set polarity above, both of which this one had
+missed, and both of which turned out to be real gaps in the implementation. It
+was deleted rather than left to contradict this one about what had shipped.*
