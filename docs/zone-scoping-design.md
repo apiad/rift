@@ -270,8 +270,15 @@ on `measure`. There is no fifth label for zone failures.
   `sentence_start` filter already in `find`.
 - **`matcher.check`** is untouched: `require` does not take zones.
 - **`cli._values`** masks for zone resolution (it currently holds raw text and
-  never masks), slices, then applies `strip_patterns` and counts. **The masking is
-  scoped to the zoned path only.** Composing it the other way round flips strip
+  never masks), slices, then applies `strip_patterns` and counts. Every metric
+  masks its own input, so a zoned slice is masked twice — which is safe because
+  **`mask` is idempotent, and by construction rather than by luck**: it only ever
+  replaces with spaces, and each of its patterns needs a literal delimiter
+  (`` ` ``, `<`, `](`, a line-leading `>` or fence marker) that the first pass has
+  already blanked, so a second pass has nothing left to match. Verified on nested
+  inline-code-containing-HTML, a blockquote inside a fence, an unterminated fence
+  running to EOF, and adjacent link URLs — idempotent and length-preserving on all
+  four. **The masking is scoped to the zoned path only.** Composing it the other way round flips strip
   and mask relative to today; both blank to spaces so results agree in practice,
   but confining the change to zoned rules makes "an unzoned rule behaves exactly
   as before" true by construction rather than by luck.
