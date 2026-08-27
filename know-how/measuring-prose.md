@@ -100,6 +100,30 @@ plausible-sounding threshold picked in advance is how a linter starts crying wol
 unless you have a reason the absolute value matters. Remember it needs at least 4
 files — below that rift reports the number, warns, and does not judge.
 
+## Fixing a `vs-siblings` outlier can promote the next one
+
+Observed on `books-tsoc`, 2026-08-27: the longest chapter was trimmed under the
+line, and the next-longest immediately took its place as the outlier.
+
+This is arithmetic, not bad luck. `vs-siblings` compares each file against the
+**other** files — `s = pstdev(others)` — so pulling the extreme value toward the
+middle shrinks the sibling spread for every remaining file, and a smaller `s`
+makes `k * s` a tighter band. Every other file's z-score goes **up** when you fix
+the worst one. A set with one dramatic outlier and a cluster behind it can chase
+you through the whole cluster, one commit at a time.
+
+**So do not edit toward the line — edit toward a value.** Before touching
+anything, run `rift stats` over the set, decide what the number should actually
+be for the file in question, and change it to that. If several files are close
+to the band, expect to move several: compute where the set lands once they are
+all where you want them, rather than iterating into a fixed point you never
+chose.
+
+This is not an argument against `vs-siblings` — it is still the predicate to
+reach for, precisely because it has no invented number in it. It is an argument
+against treating "the rule went green" as the goal. The rule going green is
+evidence about the set, and the set moved while you were looking at it.
+
 ## Encoding a style guide: what converts and what does not
 
 Taking a real book's prose rules (`repos/books-tsoc`, CALIBRATION.md plus six

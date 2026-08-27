@@ -82,6 +82,19 @@ run against a 268-page book emits on the order of a thousand sites, and a flat
 site list is untriageable where a frequency-ranked vocabulary is a worklist. A
 `permit` rule without this surface would be shipped and switched off in a week.
 
+**The triage is the cheap half.** Measured on `books-tsoc` the same day this was
+written: 34 glossary entries were defined and never marked, and the correct
+action split **5 / 29 in opposite directions** — five were deleted because the
+term did not earn an entry at all, twenty-nine were marked because they were real
+terms that had simply never been introduced. A `permit` rule over the glossary
+keys reports all 34 identically and cannot distinguish them, because the question
+"should this exist?" is not a question about the document's vocabulary.
+
+So the cost of a first run is not the thousand tokens; it is the judgement after
+them, and that part does not automate. This is the boundary the whole design
+sits on — rift finds the set, a reader decides what it means — and it is worth
+saying out loud here so nobody costs a `permit` rollout by its report size.
+
 ### Where it lands in the code
 
 `matcher.check` and `matcher.find` both take **one entity** and are called once
