@@ -180,3 +180,25 @@ def test_file_as_a_list_works_for_regex_too(repo, write):
     write("b/two.md", "[~beta]\n")
     got = extract(repo, {"file": ["a/*.md", "b/*.md"], "regex": r'\[~([a-z]+)\]'})
     assert got == {"alpha", "beta"}
+
+
+def test_regex_takes_the_first_group_that_matched(repo, write):
+    """A roster written in two idioms needs an alternation, and an unmatched
+    branch leaves its group None.
+
+    Taking `group(1)` unconditionally returned None, `.strip()` raised, and the
+    `except Exception` around the per-file loop swallowed it — dropping every
+    remaining match in that file. Not zero entities, which would look
+    suspicious, but a silently *partial* roster that reports pass.
+    """
+    write("src.py", 'if "list" in config:\n    pass\nelif config.get("lines"):\n    pass\n')
+    spec = {"file": "src.py", "regex": r'(?:"([a-z_]+)" in config|config\.get\("([a-z_]+)")'}
+    assert extract(repo, spec) == {"list", "lines"}
+
+
+def test_regex_does_not_drop_matches_after_an_unmatched_branch(repo, write):
+    """The truncation is the dangerous half: entities before the miss survive,
+    so the rule looks like it worked."""
+    write("src.py", 'config.get("alpha")\nif "beta" in config:\n    pass\nconfig.get("gamma")\n')
+    spec = {"file": "src.py", "regex": r'(?:"([a-z_]+)" in config|config\.get\("([a-z_]+)")'}
+    assert extract(repo, spec) == {"alpha", "beta", "gamma"}

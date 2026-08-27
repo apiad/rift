@@ -4,6 +4,24 @@ All notable changes to this project are documented here. Format: Keep a Changelo
 
 ## [Unreleased]
 
+### Features
+
+- **`permit.strip`** — blank renderer markup before tokenising, as `measure`
+  already does. Without it `[Enigma]{~encryption}` reports `encryption`, and a
+  marker whose slug repeats its display text reports the name twice over. Slug
+  fragments are apparatus, and no dictionary should have to absorb them.
+
+### Fixes
+
+- **The `regex:` extractor silently dropped entities after an unmatched
+  alternation branch.** It took `group(1)` unconditionally, so a branch that did
+  not participate handed `None` to `.strip()`, and the `except Exception` around
+  the per-file loop swallowed the error — discarding every *remaining* match in
+  that file. The result was not zero entities, which looks suspicious, but a
+  partial roster that reports pass. It now takes the first group that matched.
+  This is the extractor shape a codebase needs whenever a roster is spelled two
+  ways, which is most of them.
+
 ## [v0.4.0] - 2026-08-27
 
 One new rule kind and a sentence scope, both of which came from asking whether

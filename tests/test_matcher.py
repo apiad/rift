@@ -445,3 +445,39 @@ def test_unpermitted_raises_on_a_malformed_of_pattern(repo, write):
     write("docs/a.md", "alpha\n")
     with pytest.raises(re.error):
         unpermitted(repo, {"alpha"}, {**PERMIT, "of": "[unclosed"})
+
+
+def test_unpermitted_strips_renderer_markup(repo, write):
+    """Marker syntax is apparatus, not prose.
+
+    The fixture uses a marker whose slug is NOT its display text. A fixture like
+    `[Alan Turing]{~turing-alan}` cannot discriminate: the slug tokenises to the
+    same folded words as the prose, so `strip:` changes nothing and the test
+    passes against an implementation that ignores it.
+    """
+    write("docs/a.md", "The [Enigma]{~encryption} was broken.\n")
+    allowed = {"the", "enigma", "was", "broken"}
+    assert unpermitted(repo, allowed, {**PERMIT, "case_insensitive": True,
+                                       "strip": [r'\{[~>][^}]*\}']}) == []
+
+
+def test_unpermitted_without_strip_reports_the_slug(repo, write):
+    """`strip:` is opt-in, so a config that omits it gets the slug. Pinned
+    deliberately: this is the inverse that makes the test above mean something.
+    """
+    write("docs/a.md", "The [Enigma]{~encryption} was broken.\n")
+    allowed = {"the", "enigma", "was", "broken"}
+    sites = unpermitted(repo, allowed, {**PERMIT, "case_insensitive": True})
+    assert [tok for _, _, tok in sites] == ["encryption"]
+
+
+def test_unpermitted_with_an_empty_permitted_set_reports_everything(repo, write):
+    """Opposite polarity to `require`, and deliberately so.
+
+    A malformed source file makes the extractor yield nothing, and for `require`
+    zero entities silently passes — the repo's known blind spot. For `permit`
+    the same emptiness must be maximally loud: nothing is allowed, so every
+    token is a site.
+    """
+    write("docs/a.md", "alpha beta\n")
+    assert len(unpermitted(repo, set(), PERMIT)) == 2

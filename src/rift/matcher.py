@@ -2,7 +2,7 @@ import re
 from pathlib import Path
 
 from .extractor import resolve_globs
-from .text import line_of, mask, sentence_start_offsets, token_spans
+from .text import line_of, mask, sentence_start_offsets, strip_patterns, token_spans
 
 
 def check(root: Path, entity: str, require: dict) -> bool:
@@ -116,7 +116,8 @@ def unpermitted(root: Path, allowed: set[str], permit: dict) -> list[tuple[Path,
     sites = []
     for doc_file in resolve_globs(root, permit.get("in", "docs/**/*.md")):
         try:
-            text = mask(doc_file.read_text(), include_quotes)
+            text = strip_patterns(mask(doc_file.read_text(), include_quotes),
+                                  permit.get("strip"))
         except Exception:
             continue
         for pos, raw in token_spans(text):

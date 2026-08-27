@@ -74,7 +74,7 @@ Exactly one per rule. `files` and `dirs_with` stand alone; the rest need a `file
 | `yaml_keys: <a.b.c>` | The keys of the mapping at that dotted path. `services` on a compose file gives you the service roster. |
 | `yaml_values: <a.b.c>` | The values of the mapping, or the items of the list, at that path. |
 | `env_names: true` | Variable names matching `^[A-Z_][A-Z0-9_]*=`. Comments, blank lines, indented lines and lowercase names are skipped. |
-| `regex: <pattern>` | Capture group 1 if the pattern has one, otherwise the whole match. Compiled with `MULTILINE`, so `^` and `$` anchor per line. |
+| `regex: <pattern>` | The first group that **matched**, or the whole match if the pattern has no groups. Compiled with `MULTILINE`, so `^` and `$` anchor per line. An alternation is the normal way to extract a roster a codebase spells two ways — `(?:"(\w+)" in config\|config\.get\("(\w+)")` — and the unmatched branch's `None` is skipped. |
 | `lines: true` | Each non-empty line of `file:` that doesn't start with `#`, stripped. For a roster or banned list kept as plain text. |
 | `list: [a, b]` | The literal strings, written inline in the rule. Standalone — a banned list is *your* taste, so it belongs in the config rather than a repo data file. |
 | `files: <glob>` | The *stem* of each matching file (`apps/one.py` → `one`). Standalone, and **lossy** — `a/index.md` and `b/index.md` collapse to one entity. |
@@ -206,6 +206,17 @@ judged** — a year is not a spelling. That is the only judgment built in.
 |---|---|
 | `of: <regex>` | only tokens matching this are subject to the rule. Absent, every token is judged. Matched against the token **as written**, before lowercasing — which is what makes `^[A-Z]` mean "proper noun" rather than nothing at all. |
 | `case_insensitive: true` | membership is decided on the folded form. `of:` still sees the source form. |
+| `strip: [<regex>, …]` | blank renderer markup before tokenising, as `measure` does. Reach for it whenever markers carry slugs: `[Enigma]{~encryption}` otherwise reports `encryption`, which is apparatus rather than a word anyone misspelled. |
+
+**An empty permitted set reports every token**, which is the opposite polarity to
+`require` and deliberate. A malformed source file makes the extractor yield
+nothing, and zero entities makes a `require` rule *silently pass* — the known gap
+below. For `permit` the same emptiness is maximally loud.
+
+**`permit` cannot see identifiers in backticks.** It reads masked prose, so inline
+code and fences are blank to it — which means it is the wrong tool for asking
+whether a README documents an API. That is what `require` is for, and it is why
+`require` alone reads the document unmasked.
 
 There is no `exclude`, no `max_per_file` and no `max_files`: the permitted set
 *is* the allowance, and a second one on top of it would be two ways to spell the

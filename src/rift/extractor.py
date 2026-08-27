@@ -87,12 +87,27 @@ def extract(root: Path, config: dict) -> set[str]:
         for f in matching_files:
             try:
                 for m in pattern.finditer(f.read_text()):
-                    val = m.group(1) if m.lastindex and m.lastindex >= 1 else m.group(0)
-                    results.add(val.strip())
+                    results.add(_captured(m).strip())
             except Exception:
                 pass
 
     return results
+
+
+def _captured(m: re.Match) -> str:
+    """The first group that actually matched, or the whole match if there are none.
+
+    A roster written in two idioms needs an alternation, and an unmatched branch
+    leaves its group `None`. Returning `group(1)` unconditionally handed `None`
+    to `.strip()`, and the `except Exception` around the per-file loop swallowed
+    the error — dropping every *remaining* match in that file. The result was not
+    zero entities, which would look suspicious, but a silently partial roster
+    that reports pass.
+    """
+    for value in m.groups():
+        if value is not None:
+            return value
+    return m.group(0)
 
 
 def _navigate_yaml(data, path: str):
