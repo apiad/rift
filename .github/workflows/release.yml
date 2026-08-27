@@ -28,6 +28,14 @@ jobs:
       - name: Tests
         run: uv run pytest -q
 
+      # The docs half of the same gate. rift's own rules assert that its README
+      # and AGENTS.md still describe its code — so a tag cannot ship a README
+      # missing a matcher, or an AGENTS.md claiming the wrong version. That
+      # second one is not hypothetical: AGENTS.md sat at v0.2.0 while pyproject
+      # said 0.3.0, and nothing noticed for a month.
+      - name: rift lints itself
+        run: uv run rift check .
+
       # Catches the mistake that is easiest to make by hand — tagging vX.Y.Z
       # while pyproject still says something else. The lockfile is covered by
       # --locked above.

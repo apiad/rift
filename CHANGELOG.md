@@ -4,6 +4,15 @@ All notable changes to this project are documented here. Format: Keep a Changelo
 
 ## [Unreleased]
 
+## [v0.5.0] - 2026-08-27
+
+rift now lints rift. `.rift.yaml` carries eleven rules over its own API rosters,
+the paths its docs name, and its own prose, and `rift check` runs in CI beside
+the suite and on the release tag. Writing that config found both fixes below,
+which is the argument for having a consumer — made once already by `books-tsoc`,
+and made again here against rift itself.
+
+
 ### Features
 
 - **`permit.strip`** — blank renderer markup before tokenising, as `measure`
@@ -27,6 +36,23 @@ All notable changes to this project are documented here. Format: Keep a Changelo
   partial roster that reports pass. It now takes the first group that matched.
   This is the extractor shape a codebase needs whenever a roster is spelled two
   ways, which is most of them.
+
+### Notes
+
+235 tests. Both fixes were demonstrated before being fixed and mutation-tested
+after: reverting `_captured` to `group(1)` and making `permit` ignore `strip`
+each turn the suite red.
+
+**One test written for `permit.strip` was vacuous and had to be replaced.**
+`[Alan Turing]{~turing-alan}` tokenises to the same folded words with or without
+stripping, so the fixture passed against an implementation that ignored `strip:`
+entirely. The fixture now uses a marker whose slug differs from its display text
+(`[Enigma]{~encryption}`). Second time this class of mistake has surfaced in two
+releases — a fixture that cannot distinguish the two behaviours asserts nothing.
+
+Every rule in `.rift.yaml` was watched to fail before being trusted: dropping a
+matcher row, dropping an `expect` predicate, renaming a module and falsifying the
+version each turn their rule red.
 
 ## [v0.4.0] - 2026-08-27
 
