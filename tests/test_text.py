@@ -216,3 +216,34 @@ def test_token_spans_carry_the_offset_and_the_source_form():
 def test_tokens_is_the_lowercased_projection_of_token_spans():
     doc = "# Heading\n\nAlpha and BETA, 1936.\n"
     assert tokens(doc) == [t.lower() for _, t in token_spans(doc)]
+
+
+# --- sentence splitting across languages ---
+
+# The same five sentences, English and Spanish. Spanish opens questions and
+# exclamations with ¿ / ¡ *before* the capital, so a splitter that requires an
+# uppercase letter immediately after the terminator silently merges them.
+EN_FIVE = ("Elizabeth looked at the map. Why does the river stop here? "
+           "Katherine said nothing. Look at that! The bridge was gone.")
+ES_FIVE = ("Elizabeth miró el mapa. ¿Por qué el río se detiene aquí? "
+           "Katherine no respondió. ¡Mira eso! El puente había desaparecido.")
+
+
+def test_english_and_spanish_split_the_same_passage_alike():
+    """rift claims every metric works on Spanish unchanged. This is that claim."""
+    assert len(sentences(EN_FIVE)) == 5
+    assert len(sentences(ES_FIVE)) == 5
+
+
+def test_sentence_start_sees_the_word_after_inverted_punctuation():
+    """The site is the word, not the ¿ — otherwise `as: sentence_start` cannot
+    fire on any Spanish question or exclamation."""
+    starts = sentence_start_offsets(ES_FIVE)
+    assert ES_FIVE.index("Por") in starts
+    assert ES_FIVE.index("Mira") in starts
+
+
+def test_an_opening_quote_does_not_split_before_a_lowercase_word():
+    """Skipping opening punctuation must not loosen the uppercase requirement:
+    an abbreviation followed by a quoted lowercase word is not a new sentence."""
+    assert len(sentences('Use a shim, e.g. "foo" in the config.')) == 1

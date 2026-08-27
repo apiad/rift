@@ -445,6 +445,20 @@ rift's standing rule applies and is the reason this section exists:
 
 ## Out of scope
 
+- **Reading inside a code block, in any rule kind.** Not a gap and not deferred —
+  a boundary. `mask` blanks fences for `forbid`, `permit` and `measure`, and no
+  inverse mode will be added. Surveying four books' style guides (2026-08-27)
+  turned up eleven rules that wanted it: no `...` stubs, no `TODO`, no mutable
+  default arguments, no bare `except Exception`, `Optional[X]` versus `X | None`,
+  annotation coverage. Every one is real, and every one belongs to a code linter
+  with a parser — `ruff` answers all of them exactly, where rift could only
+  approximate them with regex.
+
+  Note the asymmetry with blockquotes, which look like the same exclusion and are
+  not. A quotation is *someone else's prose*, so `include_quotes` exists to put
+  it back in play when a document genuinely wants it linted. Code is not prose,
+  so there is nothing to put back.
+
 - **Readability scores.** Principle 3.
 - **Any banned list shipped with rift.** The `forbid` *mechanism* is in scope; a
   list of phrases to put in it is not. rift ships zero entries. What counts as

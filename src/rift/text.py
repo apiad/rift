@@ -16,6 +16,15 @@ _QUOTE = re.compile(r'^[ \t]*>.*$', re.MULTILINE)
 
 _TOKEN = re.compile(r'\w+')
 _TERMINATOR = re.compile(r'[.!?…]+\s+')
+# Characters a sentence may open with *before* its first letter. `¿` and `¡` are
+# the ones that matter — Spanish puts them in front of the capital — and opening
+# quotes are the same shape of problem in every language.
+#
+# Brackets are deliberately absent. `[`, `(` and `{` are markdown and marker
+# syntax far more often than they are sentence punctuation, and including them
+# split a run of `[Tony Hoare]{~hoare-tony}` markers into new sentences, moving
+# a metric that had a test pinning its value.
+_OPENERS = '¿¡"\'«‹“‘'
 _BLOCK = re.compile(r'^[ \t]*(?:#|>|[-*+][ \t]|\d+\.[ \t]|\||```|~~~)')
 
 
@@ -157,12 +166,31 @@ def paragraph_spans(text: str) -> list[tuple[int, int]]:
 def _split_sentence_spans(text: str, base: int = 0) -> list[tuple[int, int]]:
     parts, start = [], 0
     for m in _TERMINATOR.finditer(text):
-        nxt = text[m.end():m.end() + 1]
-        if nxt and (nxt.isupper() or nxt.isdigit()):
+        if _opens_a_sentence(text, m.end()):
             parts.append((start, m.end()))
             start = m.end()
     parts.append((start, len(text)))
     return [(base + s, base + e) for s, e in parts if text[s:e].strip()]
+
+
+def _opens_a_sentence(text: str, pos: int) -> bool:
+    """Does a new sentence begin at `pos`?
+
+    Opening punctuation is skipped before the test, which is what makes this
+    work on Spanish: `¿` and `¡` sit *in front of* the capital, so requiring an
+    uppercase letter immediately after the terminator merged every question and
+    exclamation into its neighbour. The same passage split into five sentences
+    in English and three in Spanish, and every sentence metric read wrong on a
+    dialogue-heavy Spanish chapter.
+
+    The uppercase-or-digit requirement itself is unchanged, so this only ever
+    finds *more* boundaries, never looser ones: `e.g. "foo"` still does not
+    split, because `foo` is lowercase once the quote is skipped.
+    """
+    while pos < len(text) and text[pos] in _OPENERS:
+        pos += 1
+    nxt = text[pos:pos + 1]
+    return bool(nxt) and (nxt.isupper() or nxt.isdigit())
 
 
 def _blank(match: re.Match) -> str:

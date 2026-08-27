@@ -169,6 +169,14 @@ URLs and blockquotes are blanked before matching, because none of them is your
 prose and a linter that fires on a quotation is one you switch off in a week.
 `include_quotes: true` puts blockquotes back in play.
 
+**Quotes are opt-in; code is never.** The two exclusions look alike and are not.
+A blockquote is *someone else's prose* — still prose, so there are documents you
+legitimately want to lint it in, which is what the flag is for. Code is not prose
+at all. **rift will not grow a mode that reads inside a code block**, in any rule
+kind: a stub, a bare `except`, a mutable default argument and an untyped
+signature are all real defects and all of them belong to a code linter. Point
+`ruff` at your fences and rift at your prose.
+
 **`require` is never masked.** It asks whether something is *documented*, and a
 code fence is documentation — masking it would break every rule that documents an
 env var inside a bash block.
@@ -372,7 +380,9 @@ Both can express "this text should be rare". Pick by what you need back: a
   the entity compiles to `\s+`, which does not stop at a blank line, so a phrase
   whose first word ends a paragraph and whose second opens the next reports a
   site. Rare, and narrowing it costs a pattern nobody can read.
-- **Sentence splitting is deliberately crude.** `Ph.D.` over-splits. Every file in
+- **Sentence splitting is deliberately crude**, though it is no longer
+  English-shaped: opening punctuation is skipped before the capital test, so
+  Spanish `¿` and `¡` open sentences correctly. `Ph.D.` over-splits. Every file in
   a set is over-split by the same rule, so comparisons stay valid where the
   absolute count does not — and no metric here depends on that count being right.
   `as: sentence_start` is the one consumer that pays for it: a spurious boundary

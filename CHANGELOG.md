@@ -4,6 +4,40 @@ All notable changes to this project are documented here. Format: Keep a Changelo
 
 ## [Unreleased]
 
+## [v0.5.1] - 2026-08-27
+
+### Fixes
+
+- **Sentence splitting was English-shaped, which broke every sentence metric on
+  Spanish.** The splitter required an uppercase letter or digit immediately after
+  the terminator, and Spanish opens questions and exclamations with `¿` / `¡`
+  *before* the capital. The same five-sentence passage split into five sentences
+  in English and **three** in Spanish, so `mean-sentence-length`,
+  `sentence-length-cv`, `short-sentence-ratio`, `sentence-length-autocorr` and
+  `repeated-sentence-openers` all read wrong on dialogue-heavy Spanish prose, and
+  `as: sentence_start` could not fire on any Spanish question. Opening
+  punctuation is now skipped before the capital test.
+
+  The uppercase requirement itself is unchanged, so this only ever finds *more*
+  boundaries: `e.g. "foo"` still does not split. Brackets are deliberately not
+  openers — `[`, `(` and `{` are markdown and marker syntax far more often than
+  sentence punctuation, and including them split a run of glossary markers into
+  new sentences and moved a metric that had a test pinning its value.
+
+  Found by surveying four books' style guides for what rift would need to lint
+  them; `repos/enciclopedia` is Spanish and dialogue-heavy, and would have been
+  measured wrong from the first run.
+
+### Notes
+
+**Scope decision recorded, not a change:** rift will not grow a mode that reads
+inside a code block, in any rule kind. The same survey found eleven rules that
+wanted one — stubs, bare `except`, mutable default arguments, annotation
+coverage — and every one belongs to a code linter with a parser rather than to a
+prose linter with a regex. Blockquotes stay opt-in via `include_quotes` because a
+quotation is still prose; code is not. See `docs/prose-linting-design.md`.
+
+
 ## [v0.5.0] - 2026-08-27
 
 rift now lints rift. `.rift.yaml` carries eleven rules over its own API rosters,

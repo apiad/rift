@@ -137,7 +137,7 @@ program is filesystem behaviour, and a mocked test here would assert nothing.
 
 ## Status
 
-v0.5.0. Four rule kinds: `require` (does it
+v0.5.1. Four rule kinds: `require` (does it
 appear), `forbid` (where does it appear), `permit` (what appears that should
 not), `measure`/`expect` (what is this number). Two real consumers —
 `repos/ainbox/.rift.yaml` (5 rules) and `repos/books-tsoc/.rift.yaml` (25 rules,
