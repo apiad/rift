@@ -45,13 +45,18 @@ def check(root: Path, entity: str, require: dict) -> bool:
     return False
 
 
-def find(root: Path, entity: str, forbid: dict) -> list[tuple[Path, int, str]]:
+def find(root: Path, entity: str, forbid: dict,
+         spans: dict | None = None) -> list[tuple[Path, int, str]]:
     """Every site where entity appears in the prose, as (path, line, entity).
 
     Answers *where is it?*, so unlike `check` it must visit every file and every
     occurrence — there is no early return. Reads the document **masked**:
     `forbid` asks whether something is in your prose, and a code fence, a link
     URL and a quotation of someone else are not your prose.
+
+    `spans` is the rule's resolved zone, precomputed once per file by the caller
+    because `find` runs once per extracted entity. `None` means the rule has no
+    zone; a dict means a file absent from it is not scanned at all.
     """
     as_type = forbid.get("as", "word")
     case_insensitive = forbid.get("case_insensitive", False)
@@ -73,6 +78,8 @@ def find(root: Path, entity: str, forbid: dict) -> list[tuple[Path, int, str]]:
 
     sites = []
     for doc_file in resolve_globs(root, forbid.get("in", "docs/**/*.md")):
+        if spans is not None and doc_file not in spans:
+            continue
         try:
             text = mask(doc_file.read_text(), include_quotes)
         except Exception:
@@ -84,11 +91,14 @@ def find(root: Path, entity: str, forbid: dict) -> list[tuple[Path, int, str]]:
                 continue
             if starts is not None and m.start() not in starts:
                 continue
+            if spans is not None and not _contained(m, spans[doc_file]):
+                continue
             sites.append((doc_file, line_of(text, m.start()), entity))
     return sites
 
 
-def unpermitted(root: Path, allowed: set[str], permit: dict) -> list[tuple[Path, int, str]]:
+def unpermitted(root: Path, allowed: set[str], permit: dict,
+                spans: dict | None = None) -> list[tuple[Path, int, str]]:
     """Every prose token *outside* the permitted set, as (path, line, token).
 
     The mirror of `find`: where `forbid` bans the extracted set, `permit` bans
@@ -115,7 +125,12 @@ def unpermitted(root: Path, allowed: set[str], permit: dict) -> list[tuple[Path,
 
     sites = []
     for doc_file in resolve_globs(root, permit.get("in", "docs/**/*.md")):
+        if spans is not None and doc_file not in spans:
+            continue
         try:
+            # Stripping *after* the caller resolved the zone is what lets a rule
+            # strip the very macro its bound is written against. `strip_patterns`
+            # blanks rather than deletes, so the spans still index this text.
             text = strip_patterns(mask(doc_file.read_text(), include_quotes),
                                   permit.get("strip"))
         except Exception:
@@ -125,12 +140,27 @@ def unpermitted(root: Path, allowed: set[str], permit: dict) -> list[tuple[Path,
             # it is a fact about tokens rather than a taste about prose.
             if raw.isdigit():
                 continue
+            if spans is not None and not any(
+                s <= pos and pos + len(raw) <= e for s, e in spans[doc_file]
+            ):
+                continue
             if of_pattern is not None and not of_pattern.search(raw):
                 continue
             if (raw.lower() if case_insensitive else raw) in allow:
                 continue
             sites.append((doc_file, line_of(text, pos), raw))
     return sites
+
+
+def _contained(m: re.Match, spans: list[tuple[int, int]]) -> bool:
+    """Is the whole match inside one span?
+
+    Full containment, not the start offset. `_word_pattern` joins words with
+    `\\s+` and is documented to span a blank line, and `as: regex` runs
+    MULTILINE, so matches genuinely straddle zone edges — testing the start
+    alone would report a site for a match that mostly lies outside.
+    """
+    return any(s <= m.start() and m.end() <= e for s, e in spans)
 
 
 def _exclusions(phrases, flags: int) -> list[re.Pattern]:

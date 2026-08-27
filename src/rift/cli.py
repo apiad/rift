@@ -11,7 +11,7 @@ from rich.table import Table
 
 from . import measure
 from .extractor import extract
-from .text import strip_patterns
+from .text import mask, strip_patterns, zone_spans
 from .matcher import check, find, resolve_globs, unpermitted
 
 console = Console()
@@ -34,7 +34,7 @@ _ZONE_UNITS = ("paragraph", "section")
 # validates but is consumed by nothing would lint the whole file and print a
 # green tick — a rule that cannot fail, which this repo holds to be worse than
 # no rule at all. Entries are deleted as their slice arrives.
-_ZONE_UNWIRED: set[str] = {"forbid", "permit", "measure"}
+_ZONE_UNWIRED: set[str] = {"measure"}
 
 
 class ConfigError(Exception):
@@ -164,8 +164,48 @@ def _kinds_or_exit(rules: list[dict]) -> list[str]:
         sys.exit(2)
 
 
-def _occurrences(root: Path, rule: dict) -> list[tuple[Path, int, str]]:
-    """The sites that violate a forbid rule.
+def _zoned_spans(root: Path, spec: dict) -> tuple[dict[Path, list] | None, list[Path]]:
+    """The rule's zone resolved per file, plus the files it matched nothing in.
+
+    `(None, [])` when the rule has no zone, so the matchers can tell "no zone"
+    from "empty selection".
+
+    Hoisted above the entity loop deliberately: `find` runs once per extracted
+    string, so producing an unresolved-zone entry inside it would emit one per
+    entity per file — 411 glossary terms over 30 chapters is 12,330 identical
+    failures from a single broken bound, of which six print. One entry per
+    (rule, file) instead.
+
+    **Masks and resolves; does not strip.** The motivating delimited bound is a
+    renderer macro, which is exactly what `strip:` is for, so stripping first
+    would blank the bound before any zone could see it and make every zone in
+    that rule unresolvable. `strip_patterns` blanks rather than deletes, so
+    spans resolved before it still index the stripped text.
+
+    An unreadable file is **not** an unresolvable zone: it is skipped entirely,
+    the same way `find` skips it, rather than being blamed on the bound.
+    """
+    zone = spec.get("zone")
+    if zone is None:
+        return None, []
+
+    spans: dict[Path, list] = {}
+    unresolved: list[Path] = []
+    for doc_file in resolve_globs(root, spec.get("in", "docs/**/*.md")):
+        try:
+            text = mask(doc_file.read_text(), spec.get("include_quotes", False))
+        except Exception:
+            continue
+        found = zone_spans(text, zone)
+        if found:
+            spans[doc_file] = found
+        else:
+            unresolved.append(doc_file)
+    return spans, unresolved
+
+
+def _occurrences(root: Path, rule: dict) -> tuple[list[tuple[Path, int, str]], list[Path]]:
+    """The sites that violate a forbid rule, and the files whose zone missed.
 
     Plain `forbid` means zero tolerance. Two optional allowances generalise it
     without turning it into a counting rule — the report is still occurrences:
@@ -177,6 +217,10 @@ def _occurrences(root: Path, rule: dict) -> list[tuple[Path, int, str]]:
 
     Setting only `max_files` must not silently apply the zero-tolerance default
     per file, so the per-file cap goes to infinity unless it was asked for.
+
+    Returns two lists rather than one because an unresolvable zone has no line
+    to report: smuggling it through the `(Path, int, str)` site tuple would mean
+    inventing a fake `:0`, and both callers format that tuple as `{path}:{line}`.
     """
     forbid = rule["forbid"]
     max_files = forbid.get("max_files")
@@ -184,9 +228,11 @@ def _occurrences(root: Path, rule: dict) -> list[tuple[Path, int, str]]:
     if max_per_file is None:
         max_per_file = math.inf if max_files is not None else 0
 
+    spans, unresolved = _zoned_spans(root, forbid)
+
     sites = []
     for entity in sorted(extract(root, rule["extract"])):
-        found = find(root, entity, forbid)
+        found = find(root, entity, forbid, spans)
 
         by_file: dict[Path, list] = {}
         for site in found:
@@ -203,7 +249,7 @@ def _occurrences(root: Path, rule: dict) -> list[tuple[Path, int, str]]:
                 sites.extend(group[max_per_file:] if max_per_file != math.inf else [])
 
     sites.sort(key=lambda s: (str(s[0]), s[1], s[2]))
-    return sites
+    return sites, unresolved
 
 
 def _values(root: Path, spec: dict) -> dict:
@@ -231,6 +277,26 @@ def _values(root: Path, spec: dict) -> dict:
     if fn is None:
         raise ConfigError(f"unknown metric {metric!r}")
     return {f: fn(t) for f, t in texts.items()}
+
+
+def _print_unresolved(root: Path, unresolved: list[Path]) -> None:
+    """`list`'s half of an unresolved zone: a yellow line and nothing else.
+
+    Not a failure, because `list` reports and never judges — and its `permit`
+    branch renders a frequency worklist with no site list to attach one to.
+    """
+    for p in unresolved:
+        console.print(f"  [yellow]⚠[/yellow] {p.relative_to(root)}   zone matched nothing")
+
+
+def _zone_failures(root: Path, unresolved: list[Path]) -> list[str]:
+    """One entry per file whose zone matched nothing.
+
+    Placed **before** the sites in the failure list: a declared zone that does
+    not exist is a broken rule rather than a finding, and six sites would push
+    it past the truncation and out of the report.
+    """
+    return [f"{p.relative_to(root)}   zone matched nothing" for p in unresolved]
 
 
 def _key_path(key) -> Path:
@@ -336,20 +402,25 @@ def check_cmd(path, config):
             failures = [str(m) for m in missing]
             label = "missing"
         elif kind == "forbid":
-            sites = _occurrences(root, rule)
-            failures = [f"{p.relative_to(root)}:{line}   {entity}" for p, line, entity in sites]
+            sites, unresolved = _occurrences(root, rule)
+            failures = _zone_failures(root, unresolved) + [
+                f"{p.relative_to(root)}:{line}   {entity}" for p, line, entity in sites
+            ]
             label = "occurrences"
         elif kind == "permit":
             entities = extract(root, rule["extract"])
+            spans, unresolved = _zoned_spans(root, rule["permit"])
             try:
-                sites = unpermitted(root, entities, rule["permit"])
+                sites = unpermitted(root, entities, rule["permit"], spans)
             except re.error as e:
                 console.print(
                     f"[red]Config error:[/red] in rule {rule['name']!r}: "
                     f"malformed of: pattern — {e}"
                 )
                 sys.exit(2)
-            failures = [f"{p.relative_to(root)}:{line}   {token}" for p, line, token in sites]
+            failures = _zone_failures(root, unresolved) + [
+                f"{p.relative_to(root)}:{line}   {token}" for p, line, token in sites
+            ]
             label = "unpermitted"
         elif kind == "measure":
             try:
@@ -435,8 +506,9 @@ def list_cmd(path, config, rule):
         elif kind == "forbid":
             # A banned entry that appears nowhere is not interesting: for
             # forbid, the occurrences *are* the report.
-            sites = _occurrences(root, r)
+            sites, unresolved = _occurrences(root, r)
             console.print(f"\n[bold]{r['name']}[/bold]  ({len(sites)} occurrences)")
+            _print_unresolved(root, unresolved)
             for path, line, entity in sites:
                 console.print(f"  [red]✗[/red] {path.relative_to(root)}:{line}   {entity}")
         elif kind == "permit":
@@ -445,8 +517,9 @@ def list_cmd(path, config, rule):
             # thousands, and a flat site list is untriageable where a
             # frequency-ranked vocabulary is a worklist.
             entities = extract(root, r["extract"])
+            spans, unresolved = _zoned_spans(root, r["permit"])
             try:
-                sites = unpermitted(root, entities, r["permit"])
+                sites = unpermitted(root, entities, r["permit"], spans)
             except re.error as e:
                 console.print(f"[red]Config error:[/red] in rule {r['name']!r}: {e}")
                 sys.exit(2)
@@ -455,6 +528,7 @@ def list_cmd(path, config, rule):
                 f"\n[bold]{r['name']}[/bold]  "
                 f"({len(counts)} unpermitted, {len(sites)} occurrences)"
             )
+            _print_unresolved(root, unresolved)
             for token, n in counts.most_common():
                 console.print(f"  [red]✗[/red] {token}   ({n})")
         elif kind == "measure":

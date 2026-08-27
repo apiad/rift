@@ -795,11 +795,11 @@ def test_a_well_formed_zone_exits_two_until_its_slice_lands(repo, write):
     would lint the whole file and report a green tick — a rule that cannot fail,
     on main, in a repo whose ethos is that such a rule is worse than none."""
     write("chapters/ch01.md", "Delve here.\n")
-    config(write, zoned_forbid())
+    config(write, zoned_measure(metric="word-count"))
 
     result = runner.invoke(main, ["check", str(repo)])
     assert result.exit_code == 2
-    assert "zoned ban" in result.output
+    assert "zoned measure" in result.output
 
 
 def test_the_degenerate_set_guard_counts_files_not_entries():
@@ -813,3 +813,180 @@ def test_the_degenerate_set_guard_counts_files_not_entries():
     values.update({(Path("b.md"), i): float(i) for i in range(3)})
     _, notes = _apply_expect(values, {"vs-siblings": 2.0})
     assert notes and "set of 2" in notes[0]
+
+
+# --- zoned forbid and permit (slice 3) ---
+
+# `delve` appears twice: once inside the delimited region, once outside it. A
+# fixture with the word only inside cannot tell a working zone from one that is
+# ignored entirely.
+ZONED_DOC = """\
+Opening prose, where we delve early.
+
+\\sep2
+
+Middle prose, where we delve again.
+
+\\sep3
+
+Closing prose, plain.
+"""
+
+OUT_OF_ZONE_ONLY = """\
+Opening prose, where we delve early.
+
+\\sep2
+
+Middle prose, plain.
+
+\\sep3
+
+Closing prose, plain.
+"""
+
+
+def delimited_forbid(**over):
+    forbid = {
+        "in": "chapters/*.md",
+        "as": "word",
+        "zone": {"after": r"\\sep2", "before": r"\\sep3"},
+    }
+    forbid.update(over)
+    return {"name": "zoned ban", "extract": {"list": ["delve"]}, "forbid": forbid}
+
+
+def test_a_zoned_forbid_ignores_an_occurrence_outside_the_zone(repo, write):
+    """THE test. Asserting only the in-zone hit passes against an
+    implementation that ignores `zone:` entirely."""
+    write("chapters/ch01.md", OUT_OF_ZONE_ONLY)
+    config(write, delimited_forbid())
+
+    assert runner.invoke(main, ["check", str(repo)]).exit_code == 0
+
+
+def test_a_zoned_forbid_still_finds_an_occurrence_inside_the_zone(repo, write):
+    write("chapters/ch01.md", ZONED_DOC)
+    config(write, delimited_forbid())
+
+    result = runner.invoke(main, ["check", str(repo)])
+    assert result.exit_code == 1
+    assert "1 occurrences" in result.output
+
+
+def test_a_structural_zone_selects_the_section_it_names(repo, write):
+    write("chapters/ch01.md",
+          "# Title\n\nOpening.\n\n## One\n\nClean here.\n\n## Two\n\nWe delve here.\n")
+    config(write, {
+        "name": "zoned ban",
+        "extract": {"list": ["delve"]},
+        "forbid": {"in": "chapters/*.md", "as": "word",
+                   "zone": {"unit": "section", "index": [1]}},
+    })
+
+    assert runner.invoke(main, ["check", str(repo)]).exit_code == 0
+
+
+def test_a_match_straddling_the_zone_edge_is_not_a_site(repo, write):
+    """`_word_pattern` joins words with `\\s+` and spans a blank line, so
+    matches genuinely straddle edges. Filtering on the start offset alone would
+    report a match that mostly lies outside."""
+    write("chapters/ch01.md", "head\n\nMARK\n\nrich\nhistory here\n")
+    config(write, {
+        "name": "zoned ban",
+        "extract": {"list": ["rich history"]},
+        "forbid": {"in": "chapters/*.md", "as": "word",
+                   "zone": {"after": "MARK", "before": "history"}},
+    })
+
+    assert runner.invoke(main, ["check", str(repo)]).exit_code == 0
+
+
+def test_a_zoned_forbid_reports_a_file_whose_zone_matched_nothing(repo, write):
+    write("chapters/ch01.md", "No separators at all, but we delve here.\n")
+    config(write, delimited_forbid())
+
+    result = runner.invoke(main, ["check", str(repo)])
+    assert result.exit_code == 1
+    assert "zone matched nothing" in result.output
+    assert "chapters/ch01.md" in result.output
+
+
+def test_one_unresolved_entry_per_file_not_per_entity(repo, write):
+    """A single broken bound over a 411-entry glossary would otherwise bury
+    every real finding under identical entries."""
+    write("chapters/ch01.md", "no bounds here\n")
+    write("chapters/ch02.md", "none here either\n")
+    config(write, {**delimited_forbid(),
+                   "extract": {"list": ["delve", "tapestry", "seamlessly"]}})
+
+    result = runner.invoke(main, ["check", str(repo)])
+    assert result.exit_code == 1
+    assert "2 occurrences" in result.output
+    assert ":0" not in result.output
+
+
+def test_an_unreadable_file_is_not_reported_as_an_unresolvable_zone(repo, write):
+    """Both `find` and `_zoned_spans` swallow read errors. The two lists stay
+    apart, or a file nobody can read is blamed on the zone."""
+    write("chapters/ch01.md", ZONED_DOC)
+    (repo / "chapters" / "ch02.md").write_bytes(b"\xff\xfe not utf-8 \xff")
+    config(write, delimited_forbid())
+
+    result = runner.invoke(main, ["check", str(repo)])
+    assert "zone matched nothing" not in result.output
+
+
+def test_list_prints_an_unresolved_zone_and_still_exits_zero(repo, write):
+    """`list` reports, it never judges — including on a rule `check` fails."""
+    write("chapters/ch01.md", "no bounds here\n")
+    config(write, delimited_forbid())
+
+    result = runner.invoke(main, ["list", str(repo)])
+    assert result.exit_code == 0
+    assert "zone matched nothing" in result.output
+
+
+# The motivating delimited bound is a renderer macro, which is exactly what
+# `strip:` is for. `permit` is the kind that strips.
+# Exactly the tokens of the zoned region — "Middle prose, where we delve again."
+# Nothing outside it is listed, so a zone that is ignored flags the whole file.
+PERMIT_ALLOWED = ["Middle", "prose", "where", "we", "delve", "again"]
+
+
+def zoned_permit(**over):
+    permit = {
+        "in": "chapters/*.md",
+        "strip": [r"\\sep\d"],
+        "zone": {"after": r"\\sep2", "before": r"\\sep3"},
+    }
+    permit.update(over)
+    return {"name": "zoned permit",
+            "extract": {"list": PERMIT_ALLOWED},
+            "permit": permit}
+
+
+def test_a_delimited_zone_survives_a_strip_that_targets_its_own_bound(repo, write):
+    """Mask, then resolve zones, then strip. Ordering the strip first blanks
+    the bound before any zone can see it, and every zone in the rule becomes
+    unresolvable."""
+    write("chapters/ch01.md", ZONED_DOC)
+    config(write, zoned_permit())
+
+    result = runner.invoke(main, ["check", str(repo)])
+    assert "zone matched nothing" not in result.output
+
+
+def test_a_zoned_permit_ignores_a_token_outside_the_zone(repo, write):
+    write("chapters/ch01.md", ZONED_DOC.replace("Opening", "Bogusword"))
+    config(write, zoned_permit())
+
+    assert runner.invoke(main, ["check", str(repo)]).exit_code == 0
+
+
+def test_a_zoned_permit_still_flags_a_token_inside_the_zone(repo, write):
+    write("chapters/ch01.md", ZONED_DOC.replace("Middle", "Bogusword"))
+    config(write, zoned_permit())
+
+    result = runner.invoke(main, ["check", str(repo)])
+    assert result.exit_code == 1
+    assert "Bogusword" in result.output
