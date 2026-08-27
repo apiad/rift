@@ -88,6 +88,26 @@ def self_repetition(text: str, n: int = 4) -> float:
     return sum(c for c in counts.values() if c > 1) / len(grams)
 
 
+def repeated_sentence_openers(text: str, per: int = 1000) -> float:
+    """Consecutive sentences opening on the same token, per 1000 tokens.
+
+    A real tic, and one that needs no lexicon: it compares tokens to tokens and
+    knows no vocabulary, so it works unchanged on Spanish.
+
+    Adjacency is the whole claim. A word that opens two sentences with another
+    between them is not the tic, so this counts pairs rather than the frequency
+    of any opener. Normalised against the tokens the sentences actually contain
+    — the same population the numerator is drawn from — rather than against
+    `word_count`, which also counts headings and list items.
+    """
+    sents = sentences(mask(text))
+    total = sum(len(s) for s in sents)
+    if len(sents) < 2 or not total:
+        return 0.0
+    repeats = sum(1 for i in range(1, len(sents)) if sents[i][0] == sents[i - 1][0])
+    return repeats / total * per
+
+
 # --- structure ---
 
 
@@ -230,6 +250,7 @@ METRICS = {
     "mattr": mattr,
     "hapax-ratio": hapax_ratio,
     "self-repetition": self_repetition,
+    "repeated-sentence-openers": repeated_sentence_openers,
     "paragraph-length-cv": paragraph_length_cv,
     "mean-paragraph-length": mean_paragraph_length,
     "sections": sections,

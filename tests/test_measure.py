@@ -232,3 +232,52 @@ def test_word_count_excludes_masked_regions():
 
 def test_word_count_is_registered():
     assert "word-count" in measure.METRICS
+
+
+# --- repeated sentence openers (slice B) ---
+
+# Four sentences, twelve tokens. Openers: the, the, a, the.
+# Consecutive repeats: only the pair (1, 2). 1 / 12 * 1000 = 83.333...
+OPENERS_ONE_REPEAT = "The cat sat. The dog ran. A bird flew. The fish swam."
+# Same twelve tokens, openers: the, the, the, the. Three consecutive pairs.
+# 3 / 12 * 1000 = 250.0
+OPENERS_ALL_REPEAT = "The cat sat. The dog ran. The bird flew. The fish swam."
+# Same shape, every opener distinct. Zero pairs.
+OPENERS_NONE = "Alpha runs fast. Beta walks slow. Gamma flies high. Delta swims deep."
+
+
+def test_repeated_sentence_openers_hand_computed():
+    assert measure.repeated_sentence_openers(OPENERS_ONE_REPEAT) == pytest.approx(1 / 12 * 1000)
+
+
+def test_repeated_sentence_openers_is_zero_when_every_opener_differs():
+    assert measure.repeated_sentence_openers(OPENERS_NONE) == 0.0
+
+
+def test_repeated_sentence_openers_discriminates():
+    """The tic is consecutive repetition, not vocabulary: all three fixtures
+    share a sentence count, and two share their token count exactly."""
+    none = measure.repeated_sentence_openers(OPENERS_NONE)
+    one = measure.repeated_sentence_openers(OPENERS_ONE_REPEAT)
+    every = measure.repeated_sentence_openers(OPENERS_ALL_REPEAT)
+    assert none < one < every
+    assert every == pytest.approx(250.0)
+
+
+def test_repeated_sentence_openers_counts_consecutive_pairs_not_totals():
+    """A word that opens two sentences with another between them is not the tic.
+
+    Openers: the, a, the. No adjacent pair repeats, though "the" opens twice.
+    A count of distinct-opener frequency would report 1 here.
+    """
+    assert measure.repeated_sentence_openers("The cat sat. A dog ran. The bird flew.") == 0.0
+
+
+def test_repeated_sentence_openers_ignores_a_code_fence():
+    """Masked like every metric: a fence is not prose."""
+    fenced = "```\nThe x. The y. The z.\n```\n\nAlpha runs. Beta walks."
+    assert measure.repeated_sentence_openers(fenced) == 0.0
+
+
+def test_repeated_sentence_openers_is_registered():
+    assert "repeated-sentence-openers" in measure.METRICS

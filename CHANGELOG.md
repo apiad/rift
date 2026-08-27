@@ -16,6 +16,11 @@ All notable changes to this project are documented here. Format: Keep a Changelo
 
 ### Features
 
+- **`repeated-sentence-openers` metric** — consecutive sentences opening on the
+  same token, per 1000 tokens. Adjacency is the claim: a word that opens two
+  sentences with another between them is not the tic, so it counts pairs rather
+  than opener frequency. Needs no lexicon and knows no vocabulary, so it works
+  unchanged on Spanish.
 - **`forbid.exclude`** — literal phrases whose occurrences are exempt from an
   otherwise-good ban. Came from `books-tsoc`, where "basically" is a real tic
   twice over and unavoidable twice over: once inside a quotation of Backus, once

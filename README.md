@@ -201,7 +201,7 @@ checked. An absent `expect` reports the number and passes.
 frequent tokens — noisy at chapter length, so rank it rather than trusting the
 absolute value) · `sentence-length-cv`, `short-sentence-ratio`,
 `sentence-length-autocorr`, `mean-sentence-length` (rhythm) · `mattr`,
-`hapax-ratio`, `self-repetition` (texture) · `paragraph-length-cv`,
+`hapax-ratio`, `self-repetition`, `repeated-sentence-openers` (texture) · `paragraph-length-cv`,
 `mean-paragraph-length`, `sections`, `words-per-section`, `mean-heading-length`,
 `opening-paragraphs` (structure).
 
