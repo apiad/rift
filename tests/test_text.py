@@ -247,3 +247,129 @@ def test_an_opening_quote_does_not_split_before_a_lowercase_word():
     """Skipping opening punctuation must not loosen the uppercase requirement:
     an abbreviation followed by a quoted lowercase word is not a new sentence."""
     assert len(sentences('Use a shim, e.g. "foo" in the config.')) == 1
+
+
+# --- zones ---
+
+from rift.text import section_spans, zone_spans
+
+# A `#` title, an opening paragraph, then two `##` sections. Three zones, and
+# the content of each is distinguishable — a fixture whose zones read alike
+# cannot tell an off-by-one from a correct implementation.
+THREE_ZONES = """\
+# The Title
+
+Opening prose here.
+
+## First
+
+Alpha content.
+
+## Second
+
+Beta content.
+"""
+
+
+def test_section_spans_treats_the_text_before_the_first_h2_as_zone_zero():
+    spans = section_spans(THREE_ZONES)
+    assert len(spans) == 3
+    assert spans[0] == (0, THREE_ZONES.index("## First"))
+    assert "The Title" in THREE_ZONES[spans[0][0]:spans[0][1]]
+    assert "Opening prose" in THREE_ZONES[spans[0][0]:spans[0][1]]
+
+
+def test_section_spans_cover_the_whole_text_without_gaps():
+    spans = section_spans(THREE_ZONES)
+    assert spans[0][0] == 0
+    assert spans[-1][1] == len(THREE_ZONES)
+    assert all(a[1] == b[0] for a, b in zip(spans, spans[1:]))
+
+
+def test_section_spans_ignores_h3():
+    doc = "Intro.\n\n## One\n\n### Deeper\n\nBody.\n"
+    assert len(section_spans(doc)) == 2
+
+
+def test_a_document_with_no_h2_is_a_single_zone():
+    doc = "# Title\n\nJust prose.\n"
+    assert section_spans(doc) == [(0, len(doc))]
+
+
+def test_zone_spans_selects_a_section_by_index():
+    [(s, e)] = zone_spans(THREE_ZONES, {"unit": "section", "index": [1]})
+    assert "Alpha" in THREE_ZONES[s:e]
+    assert "Beta" not in THREE_ZONES[s:e]
+
+
+def test_zone_spans_index_minus_one_selects_the_last_zone_not_the_first():
+    """The off-by-one that passes any single-zone fixture."""
+    [(s, e)] = zone_spans(THREE_ZONES, {"unit": "section", "index": [-1]})
+    assert "Beta" in THREE_ZONES[s:e]
+    assert "Alpha" not in THREE_ZONES[s:e]
+    assert "The Title" not in THREE_ZONES[s:e]
+
+
+def test_zone_spans_takes_several_indices():
+    spans = zone_spans(THREE_ZONES, {"unit": "paragraph", "index": [0, -1]})
+    picked = [THREE_ZONES[s:e] for s, e in spans]
+    assert picked == ["Opening prose here.", "Beta content."]
+
+
+def test_zone_spans_with_no_index_is_the_union_of_the_units():
+    spans = zone_spans(THREE_ZONES, {"unit": "section"})
+    assert spans == section_spans(THREE_ZONES)
+
+
+def test_an_out_of_range_index_yields_no_span_rather_than_raising():
+    assert zone_spans(THREE_ZONES, {"unit": "section", "index": [7]}) == []
+
+
+# --- delimited zones ---
+
+DELIMITED = "Head alpha.\n\n\\sep2\n\nBody beta.\n\n\\sep3\n\nTail gamma.\n"
+
+
+def test_a_delimited_zone_runs_between_the_two_bounds():
+    [(s, e)] = zone_spans(DELIMITED, {"after": r"\\sep2", "before": r"\\sep3"})
+    assert "beta" in DELIMITED[s:e]
+    assert "alpha" not in DELIMITED[s:e]
+    assert "gamma" not in DELIMITED[s:e]
+
+
+def test_after_alone_runs_to_end_of_file():
+    [(s, e)] = zone_spans(DELIMITED, {"after": r"\\sep2"})
+    assert e == len(DELIMITED)
+    assert "alpha" not in DELIMITED[s:e]
+    assert "gamma" in DELIMITED[s:e]
+
+
+def test_before_alone_runs_from_start_of_file():
+    [(s, e)] = zone_spans(DELIMITED, {"before": r"\\sep3"})
+    assert s == 0
+    assert "alpha" in DELIMITED[s:e]
+    assert "gamma" not in DELIMITED[s:e]
+
+
+def test_an_inverted_pair_resolves_to_nothing():
+    """Right way round in one chapter and wrong in another must not go quietly
+    green on the second."""
+    assert zone_spans(DELIMITED, {"after": r"\\sep3", "before": r"\\sep2"}) == []
+
+
+def test_a_missing_bound_resolves_to_nothing():
+    assert zone_spans(DELIMITED, {"after": r"\\sep9"}) == []
+    assert zone_spans(DELIMITED, {"before": r"\\sep9"}) == []
+
+
+def test_the_region_excludes_the_bound_matches_themselves():
+    doc = "before\n\nMARK delve MARK\n\nbody\n\nEND\n"
+    [(s, e)] = zone_spans(doc, {"after": "MARK delve MARK", "before": "END"})
+    assert "delve" not in doc[s:e]
+    assert "body" in doc[s:e]
+
+
+def test_the_first_match_wins_for_each_bound():
+    doc = "a\n\nSEP\n\nb\n\nSEP\n\nc\n\nEND\n\nd\n\nEND\n"
+    [(s, e)] = zone_spans(doc, {"after": "SEP", "before": "END"})
+    assert doc[s:e].split() == ["b", "SEP", "c"]

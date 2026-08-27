@@ -169,6 +169,73 @@ def paragraph_spans(text: str) -> list[tuple[int, int]]:
     return spans
 
 
+def section_spans(text: str) -> list[tuple[int, int]]:
+    """The text split at every `##`, as offsets. Contiguous and gapless.
+
+    The text before the first `##` is zone 0, which is what makes "the chapter
+    opening" addressable in a file whose first heading is its title. It is
+    emitted even when empty, so `index: [1]` means the same thing in a file
+    that opens on a `##` as in one that does not — a zone index that shifted
+    with the presence of a preamble would make a rule confidently wrong about
+    where it looked.
+
+    A section owns its own heading line: the span starts at the `##`.
+    """
+    starts = [m.start() for m in _H2.finditer(text)]
+    bounds = [0] + starts + [len(text)]
+    return [(bounds[i], bounds[i + 1]) for i in range(len(bounds) - 1)]
+
+
+def zone_spans(text: str, zone: dict) -> list[tuple[int, int]]:
+    """The regions of `text` a rule's `zone:` selects.
+
+    Callers pass **already-masked** text: resolving on raw text would split
+    `unit: section` on a `##` inside a code fence.
+
+    Returns `[]` for a zone that cannot be resolved in this document — a
+    missing bound, an inverted pair, an index past the end. The empty list is
+    the signal, not an exception, because the caller has to tell "no zone" from
+    "empty selection" and owns the reporting either way.
+    """
+    if "after" in zone or "before" in zone:
+        return _delimited_spans(text, zone.get("after"), zone.get("before"))
+
+    unit = zone.get("unit")
+    spans = paragraph_spans(text) if unit == "paragraph" else section_spans(text)
+
+    index = zone.get("index")
+    if index is None:
+        return spans
+    picked = []
+    for i in index:
+        if -len(spans) <= i < len(spans):
+            picked.append(spans[i])
+    return sorted(set(picked))
+
+
+def _delimited_spans(text: str, after, before) -> list[tuple[int, int]]:
+    """The one region between the **first** match of each bound, bounds excluded.
+
+    One region per file, no nesting, no overlap resolution. A region selector
+    that resolves ambiguity is a parser, and a zone that silently lands on the
+    wrong span produces a rule that is confidently wrong about where it looked.
+    """
+    start, end = 0, len(text)
+    if after is not None:
+        m = re.search(after, text, re.MULTILINE)
+        if m is None:
+            return []
+        start = m.end()
+    if before is not None:
+        m = re.search(before, text, re.MULTILINE)
+        if m is None:
+            return []
+        end = m.start()
+    if start >= end:
+        return []
+    return [(start, end)]
+
+
 def _split_sentence_spans(text: str, base: int = 0) -> list[tuple[int, int]]:
     parts, start = [], 0
     for m in _TERMINATOR.finditer(text):
