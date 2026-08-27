@@ -4,6 +4,14 @@ All notable changes to this project are documented here. Format: Keep a Changelo
 
 ## [Unreleased]
 
+### Features
+
+- **`forbid.exclude`** — literal phrases whose occurrences are exempt from an
+  otherwise-good ban. Came from `books-tsoc`, where "basically" is a real tic
+  twice over and unavoidable twice over: once inside a quotation of Backus, once
+  as the B in BASE. Naming the two phrases keeps the ban intact everywhere else,
+  which loosening the pattern would not.
+
 ### Fixes
 
 - **`rift list` no longer crashes on a `measure` rule.** It handled `require` and

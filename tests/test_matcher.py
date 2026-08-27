@@ -180,6 +180,29 @@ def test_find_returns_nothing_when_clean(repo, write):
     assert find(repo, "delve", FORBID) == []
 
 
+# --- exclude: declared exceptions to an otherwise-good ban ---
+
+EXCLUDE = {**FORBID, "exclude": ["delve deeper into the archive"]}
+
+
+def test_exclude_skips_an_occurrence_inside_a_declared_phrase(repo, write):
+    write("docs/a.md", "we delve deeper into the archive\n")
+    assert find(repo, "delve", EXCLUDE) == []
+
+
+def test_exclude_still_reports_the_same_word_elsewhere(repo, write):
+    write("docs/a.md", "we delve deeper into the archive\nand we delve again\n")
+    assert [line for _, line, _ in find(repo, "delve", EXCLUDE)] == [2]
+
+
+def test_exclude_honours_the_rules_own_case_sensitivity(repo, write):
+    write("docs/a.md", "we Delve Deeper Into The Archive\n")
+    forbid = {**FORBID, "case_insensitive": True, "exclude": ["delve deeper into the archive"]}
+    assert find(repo, "delve", forbid) == []
+    # ...and a case-sensitive rule does not silently extend the exemption
+    assert len(find(repo, "Delve", EXCLUDE)) == 1
+
+
 # --- multi-glob `in:` and MULTILINE regex (needed by real configs) ---
 
 

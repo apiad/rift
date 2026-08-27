@@ -64,15 +64,38 @@ def find(root: Path, entity: str, forbid: dict) -> list[tuple[Path, int, str]]:
     except re.error:
         return []
 
+    exclusions = _exclusions(forbid.get("exclude"), flags)
+
     sites = []
     for doc_file in resolve_globs(root, forbid.get("in", "docs/**/*.md")):
         try:
             text = mask(doc_file.read_text(), include_quotes)
         except Exception:
             continue
+        exempt = [span for e in exclusions for span in (m.span() for m in e.finditer(text))]
         for m in compiled.finditer(text):
+            if any(s <= m.start() and m.end() <= e for s, e in exempt):
+                continue
             sites.append((doc_file, line_of(text, m.start()), entity))
     return sites
+
+
+def _exclusions(phrases, flags: int) -> list[re.Pattern]:
+    """Declared exceptions: literal phrases whose occurrences are exempt.
+
+    A banned word is sometimes unavoidable — inside a quotation of someone
+    else, or as a letter of an acronym. Naming the phrase keeps the ban intact
+    everywhere else, which weakening the pattern would not: the exemption is
+    visible in the config instead of hidden in a looser regex.
+
+    Literal, not regex, and matched with the rule's own flags — a
+    case-sensitive rule must not acquire a case-insensitive exemption.
+    """
+    if not phrases:
+        return []
+    if isinstance(phrases, str):
+        phrases = [phrases]
+    return [re.compile(re.escape(p), flags) for p in phrases]
 
 
 def _pattern_for(entity: str, as_type: str, wrap: str | None = None) -> str | None:

@@ -152,6 +152,25 @@ without turning it into a counting rule — the report is still `file:line` site
 | `max_per_file: N` | the first N in each file are fine; report the rest. *"Mark a glossary term only on first use in a chapter."* |
 | `max_files: N` | the entity may appear in at most N files; report the excess. *"Never define a footnote label twice."* |
 
+**Declared exceptions.** `exclude:` takes literal phrases whose occurrences are
+exempt. Masking already handles blockquotes, but a banned word also turns up
+inside an *inline* quotation of someone else, or as a letter of an acronym:
+
+```yaml
+    forbid:
+      in: "chapters/*.md"
+      as: word
+      case_insensitive: true
+      exclude:
+        - 'basically clerical work'   # Backus, quoted
+        - 'Basically Available'       # the B in BASE
+```
+
+Name the phrase rather than loosening the pattern. `exclude: ['basically ']`
+would quietly stop catching the tic everywhere; the list above keeps the ban
+intact and puts each exemption where a reader can argue with it. Phrases are
+literal, and matched with the rule's own `case_insensitive` setting.
+
 rift ships **no banned list**. What counts as bad phrasing is taste, and taste
 lives in your `.rift.yaml`.
 
