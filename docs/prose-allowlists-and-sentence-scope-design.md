@@ -251,11 +251,6 @@ Per `AGENTS.md`, which is not negotiable here:
   taste that fires on deliberate long sentences — the "yeah, that's fine actually"
   failure that `know-how/writing-rules.md` says disqualifies a rule.
 
-- **`strip:` for `forbid`.** `permit` needs it and has it. Whether `forbid` should
-  take it too is a real question — a banned word inside a marker slug is a false
-  site today — but it changes a shipped rule kind with existing configs behind it,
-  and it does not block this work. Revisit once `permit` is in use.
-
 - **`permit` as a check on API names in a technical doc.** It reads masked prose,
   so inline code and fences are blank to it and a README's backticked identifiers
   are invisible. `require` is the tool for that question, and this is precisely
@@ -266,11 +261,11 @@ Per `AGENTS.md`, which is not negotiable here:
   together with a thousand-token triage would make it impossible to tell which of
   the two broke.
 
-- **`strip:` for `forbid`.** `permit` needs it and gets it. Whether `forbid`
-  should also take it is a real question — a banned word inside a marker slug is
-  a false site today — but it is a change to a shipped rule kind with existing
-  configs behind it, and it does not block this work. Revisit once `permit` is in
-  use.
+- **`strip:` for `forbid`.** `permit` needs it and now has it (`b4c9f2b`).
+  Whether `forbid` should also take it is a real question — a banned word inside
+  a marker slug is a false site today — but it is a change to a shipped rule kind
+  with existing configs behind it, and it does not block this work. Revisit once
+  `permit` is in use.
 
 - **Automatic dictionary generation.** rift never writes a wordlist. `aspell dump`
   is a documented recipe, not a feature.
