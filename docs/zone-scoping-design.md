@@ -377,3 +377,10 @@ of the module graph — so `_H2` moves down instead. The others removed `zone:` 
 entry one-per-file instead of one-per-entity (12,330 identical failures from a
 single broken bound), and cut a vacuous third from a test, since `rift stats`
 builds its own spec and can never produce a zoned key.*
+
+*Fixing those surfaced a cost the first pass had hidden: restricting zoned
+`measure` to `pattern:` also killed "the opening paragraph is 45–70 words", which
+needs `word-count`. So the rule is no longer `pattern:`-only — it is **exact
+counts versus statistics**, `pattern:` and `metric: word-count` against everything
+that is a ratio, a coefficient of variation, an autocorrelation or a mean. That is
+what the first pass was reaching for and stated too narrowly.*
