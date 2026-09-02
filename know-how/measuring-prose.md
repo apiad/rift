@@ -122,6 +122,13 @@ rule is therefore meaningfully *tighter* than "200 words", and tightest on
 exactly the data-heavy paragraphs. Measure with `rift stats` and set the bound
 against that number, not against a count from another tool.
 
+**Then leave margin.** That book holds a corpus max of 198 against a written
+standard of "200 words", and shipped its rule at **220** rather than 200. At 200
+the bound clears by two tokens — adding one decimal to the statistics paragraph
+turns the gate red without the prose getting worse, and a gate that fires on
+noise is one people learn to skip. The standard stays 200 for the writer; the
+linter catches them around 205.
+
 ## Do not ship thresholds you have not measured
 
 Write the rule with no `expect:` first, or use `rift stats`, and look at the real

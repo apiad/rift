@@ -328,6 +328,16 @@ splitting, so Spanish works unchanged. Readability scores are deliberately absen
 Flesch and its relatives bake in English syllable assumptions *and* a theory of
 good writing.
 
+**A token is not a word, and that is where your threshold goes wrong.** `\w+`
+splits on punctuation, so `25.9` counts as two and `six-point` as two. Any bound
+carried over from a word count — a style guide's "200 words", a number measured
+with `len(s.split())` — therefore lands **tighter than intended**, by around 7%
+on real prose. Worse, the gap is not spread evenly: it concentrates in whichever
+paragraph carries the decimals and the hyphenates, which is usually the longest
+one, so the rule misfires hardest exactly where you meant it to bite. Set the
+number against `rift stats`, not against a count from another tool, and leave
+margin — a gate that trips on noise is a gate people learn to skip.
+
 **A per-file number says how bad, never which one.** `max-paragraph-length`
 reports that a chapter contains a 400-word block; it cannot say where, because
 one file yields one value. To get the offender's location, measure `word-count`

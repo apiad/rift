@@ -4,6 +4,23 @@ All notable changes to this project are documented here. Format: Keep a Changelo
 
 ## [Unreleased]
 
+### Documentation
+
+- **The token-vs-word gap, promoted to the README.** v0.7.0 put it in
+  `know-how/measuring-prose.md` under a paragraph-length heading, which is the
+  wrong altitude twice over: it applies to any bound carried over from a word
+  count, sentence thresholds included, and nobody reading the rule reference to
+  write a `max:` ever reaches the know-how. It now sits under the metric table,
+  beside the `\w+` sentence it is a consequence of.
+
+  From the first consumer to set one of these thresholds in anger: the error is
+  ~7% and it concentrates in whichever paragraph carries the decimals and
+  hyphenates — usually the longest one — so a bound copied from `len(s.split())`
+  misfires hardest exactly where it was meant to bite. `books-computist-guide`
+  shipped at 220 against a corpus max of 198 and a written standard of 200,
+  because at 200 the gate trips on one added decimal. A gate that fires on noise
+  is one people learn to skip.
+
 ## [v0.7.0] - 2026-09-02
 
 ### Features
