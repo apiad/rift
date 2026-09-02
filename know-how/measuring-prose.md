@@ -90,6 +90,38 @@ Note also which metrics *disagree*: that same Part had the book's **highest**
 vocabulary diversity. "Flat" was true of its cadence and false of its words, and
 only reading two families together gives you that.
 
+## An average hides the one paragraph a reader will actually notice
+
+The mirror of the section above: aggregates conceal single offenders, and for
+paragraph length the single offender is the whole complaint. A reader does not
+experience a mean — they hit one wall of text and stop.
+
+Measured on a real prologue, before and after its three longest paragraphs were
+split (the text is otherwise identical — splitting cost zero words):
+
+| | before | after |
+|---|---|---|
+| `mean-paragraph-length` | 83.1 | 80.2 |
+| `paragraph-length-cv` | 0.665 | 0.561 |
+| `max-paragraph-length` | **403** | **198** |
+
+The mean moves three tokens across a 400-token defect — one wall among 160
+paragraphs cannot shift it, and no threshold on it could have caught this.
+
+The CV is the more interesting failure. It did move here, so it is not blind —
+but it cannot tell *one wall of text* from *healthy variation*, because both
+raise it. Bound it and you flag the document that deliberately drops a
+one-sentence paragraph for emphasis, which is the effect you were hoping to
+protect. **Bound the top end; never bound the variation.**
+
+**A rift token is not a word, and the gap is where your threshold goes wrong.**
+Tokenising is `\w+`, so `25.9` counts as two and `six-point` as two. The
+after-column above reads 198 by rift and 184 by `len(p.split())` — a 7% spread,
+concentrated entirely in whichever paragraph carries the statistics. A `max: 200`
+rule is therefore meaningfully *tighter* than "200 words", and tightest on
+exactly the data-heavy paragraphs. Measure with `rift stats` and set the bound
+against that number, not against a count from another tool.
+
 ## Do not ship thresholds you have not measured
 
 Write the rule with no `expect:` first, or use `rift stats`, and look at the real

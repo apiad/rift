@@ -316,6 +316,7 @@ file is never credited for its code blocks nor penalised for its markers.
 | `sections` | structure | count of `##` headings |
 | `words-per-section` | structure | prose tokens divided by section count |
 | `mean-paragraph-length` | structure | mean tokens per paragraph |
+| `max-paragraph-length` | structure | tokens in the longest paragraph — the wall of text a mean absorbs |
 | `paragraph-length-cv` | structure | σ/μ of paragraph lengths |
 | `mean-heading-length` | structure | mean tokens per heading |
 | `opening-paragraphs` | structure | blocks between the `#` title and the first `##` |
@@ -326,6 +327,34 @@ Every one is language-agnostic — `\w+` tokenising and punctuation-based senten
 splitting, so Spanish works unchanged. Readability scores are deliberately absent:
 Flesch and its relatives bake in English syllable assumptions *and* a theory of
 good writing.
+
+**A per-file number says how bad, never which one.** `max-paragraph-length`
+reports that a chapter contains a 400-word block; it cannot say where, because
+one file yields one value. To get the offender's location, measure `word-count`
+under a paragraph zone — every paragraph becomes its own key:
+
+```yaml
+  - name: "no paragraph over 200 words"
+    measure:
+      files: "chapters/*.md"
+      metric: word-count
+      zone: { unit: paragraph }
+    expect:
+      max: 200
+```
+
+```
+✗  no paragraph over 200 words  [3 out of bounds]
+   chapters/ch03.md#42   397.00   above max 200
+```
+
+Reach for the zoned rule to enforce a cap someone must act on, and for the metric
+when the per-file view is the point — a `rift stats` column, or `vs-siblings`
+across chapters, neither of which a zone can reach.
+
+**Do not bound `paragraph-length-cv` to police this.** A cap on variation
+punishes the length variation good prose wants: a document of uniform 90-word
+paragraphs scores well and reads as machine output. Bound the top end only.
 
 **`strip:` renderer markup before measuring.** Marker syntax is apparatus, not
 prose, and leaving it in corrupts every metric: `[Tony Hoare]{~hoare-tony}`

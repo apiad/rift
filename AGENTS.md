@@ -168,7 +168,7 @@ program is filesystem behaviour, and a mocked test here would assert nothing.
 
 ## Status
 
-v0.6.0. Four rule kinds: `require` (does it
+v0.7.0. Four rule kinds: `require` (does it
 appear), `forbid` (where does it appear), `permit` (what appears that should
 not), `measure`/`expect` (what is this number). Three of the four take a
 `zone:` — part of a file rather than all of it; `require` does not, and the

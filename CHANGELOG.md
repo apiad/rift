@@ -4,6 +4,44 @@ All notable changes to this project are documented here. Format: Keep a Changelo
 
 ## [Unreleased]
 
+## [v0.7.0] - 2026-09-02
+
+### Features
+
+- **`max-paragraph-length` metric** — tokens in the longest paragraph. The
+  sixteenth metric, and the first that reports an offender rather than a shape.
+
+  It exists because the two paragraph metrics already here both miss the defect
+  a reader actually hits. Measured on a real prologue, before and after its
+  three longest paragraphs were split (identical text otherwise — splitting cost
+  zero words): `mean-paragraph-length` moved 83.1 → 80.2, a three-token shift
+  across a 400-token defect, because one wall among 160 paragraphs cannot move
+  a mean. `max-paragraph-length` moved 403 → 198.
+
+  `paragraph-length-cv` is the more interesting non-answer. It does move
+  (0.665 → 0.561), so it is not blind — but it cannot distinguish *one wall of
+  text* from *healthy variation*, since both raise it. Bounding it flags the
+  document that drops a one-sentence paragraph for emphasis, which is the effect
+  you were trying to protect. Bound the top end; never bound the variation.
+
+### Documentation
+
+- **The zoned idiom for locating the offender**, in the README beside the metric
+  table. A per-file number says how bad, never which one. `measure` a
+  `word-count` under `zone: {unit: paragraph}` and every paragraph becomes its
+  own key, so the report reads `chapters/ch03.md#42   397.00   above max 200`.
+  This needed no new code — it has worked since zoning shipped in v0.6.0 — but
+  nothing pointed at it, and the per-file metric is the wrong tool for a cap
+  somebody has to act on. The metric is for the views a zone cannot reach: a
+  `rift stats` column, and `vs-siblings` across chapters.
+
+- **A rift token is not a word**, in `know-how/measuring-prose.md`. Tokenising
+  is `\w+`, so `25.9` counts as two and `six-point` as two. The same paragraph
+  reads 198 by rift and 184 by `len(p.split())` — a 7% spread concentrated
+  entirely in whichever paragraph carries the statistics, which makes `max: 200`
+  tighter than "200 words" and tightest on data-heavy prose. Set the bound
+  against `rift stats`, not against a count from another tool.
+
 ## [v0.6.0] - 2026-08-27
 
 ### Features

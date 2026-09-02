@@ -102,6 +102,34 @@ def test_mean_paragraph_length_hand_computed():
     assert measure.mean_paragraph_length("aa bb\n\ncc dd\n") == 2.0
 
 
+def test_max_paragraph_length_hand_computed():
+    assert measure.max_paragraph_length("aa bb\n\ncc dd ee\n") == 3.0
+
+
+def test_max_paragraph_length_is_zero_for_a_document_with_no_prose():
+    assert measure.max_paragraph_length("## Heading\n") == 0.0
+
+
+def test_max_paragraph_length_catches_an_outlier_the_mean_and_cv_miss():
+    """The whole reason this metric exists.
+
+    One wall of text among many short paragraphs barely moves a mean, and a CV
+    bound cannot be the answer either: a cap on variation punishes exactly the
+    length variation good prose wants. Only the max sees a single offender.
+    """
+    short = "\n\n".join(["aa bb cc"] * 60)
+    wall = " ".join(["word"] * 400)
+    with_outlier = f"{short}\n\n{wall}\n"
+
+    # The mean drifts by a few tokens — nothing a threshold could catch...
+    assert measure.mean_paragraph_length(with_outlier) < 15
+    # ...and the CV *rises*, so a `max:` on it would flag the good document too.
+    assert measure.paragraph_length_cv(with_outlier) > measure.paragraph_length_cv(short)
+    # The max reports the offender at its real size.
+    assert measure.max_paragraph_length(with_outlier) == 400.0
+    assert measure.max_paragraph_length(short) == 3.0
+
+
 def test_paragraph_length_cv_is_zero_for_equal_paragraphs():
     assert measure.paragraph_length_cv("aa bb\n\ncc dd\n") == 0.0
 

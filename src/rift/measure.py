@@ -125,6 +125,25 @@ def paragraph_length_cv(text: str) -> float:
     return _cv(_paragraph_lengths(text))
 
 
+def max_paragraph_length(text: str) -> float:
+    """Tokens in the longest paragraph — the wall of text neither average sees.
+
+    A single 400-word block among 160 short paragraphs moves `mean` by a couple
+    of tokens. `paragraph-length-cv` does move, but it cannot tell one wall of
+    text from healthy variation — both raise it — so a cap on it penalises the
+    document that drops a one-sentence paragraph for emphasis. This is the only
+    one of the three that reports an offender rather than a shape.
+
+    It says *how long*, not *which one* — a per-file number cannot. To locate the
+    paragraph, measure `word-count` under `zone: {unit: paragraph}`, which keys
+    every paragraph separately and reports `chapter.md#42`. Use this metric for
+    the per-file view (`rift stats`, comparison across siblings) and the zoned
+    rule to enforce a cap you intend someone to act on.
+    """
+    lengths = _paragraph_lengths(text)
+    return float(max(lengths)) if lengths else 0.0
+
+
 def sections(text: str) -> float:
     return float(len(_H2.findall(mask(text))))
 
@@ -252,6 +271,7 @@ METRICS = {
     "repeated-sentence-openers": repeated_sentence_openers,
     "paragraph-length-cv": paragraph_length_cv,
     "mean-paragraph-length": mean_paragraph_length,
+    "max-paragraph-length": max_paragraph_length,
     "sections": sections,
     "words-per-section": words_per_section,
     "mean-heading-length": mean_heading_length,
