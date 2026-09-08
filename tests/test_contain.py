@@ -81,11 +81,28 @@ def test_where_heading_not_still_flags_non_matching_sections(repo, write):
     assert "What is truth?" in offenders[0][2]
 
 
-def test_an_empty_zone_is_skipped_not_flagged(repo, write):
+def test_an_empty_preamble_is_skipped_not_flagged(repo, write):
     """The preamble (zone 0) is empty when a file opens on `##`; every
     contain rule over sections would otherwise trip on it in every such file."""
     write("chapters/01.md",
           "## What is truth?\n\nquestion · yes\n")
+    offenders, _ = contain_gaps(repo, {
+        "in": "chapters/*.md",
+        "zone": SECTION_ZONE,
+        "matches": r"^question · \S",
+    })
+    assert offenders == []
+
+
+def test_a_preamble_with_content_is_still_skipped(repo, write):
+    """Under `unit: section`, zone 0 is preamble by definition — whatever it
+    carries (an H1 title, a chapter brief, nothing) is not a section, and a
+    "every section contains X" claim must not judge it. The chapter file that
+    opens `# Title\\npreamble\\n## Section` would otherwise report the preamble
+    as a section missing its brief."""
+    write("chapters/01.md",
+          "# What is truth?\n\npreamble text, no brief here\n\n"
+          "## What kinds of things are true?\n\nquestion · yes\n")
     offenders, _ = contain_gaps(repo, {
         "in": "chapters/*.md",
         "zone": SECTION_ZONE,

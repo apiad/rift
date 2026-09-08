@@ -213,6 +213,13 @@ def contain_gaps(root: "Path", spec: dict,
     exclude_pat = spec.get("where_heading_not")
     exclude = re.compile(exclude_pat) if exclude_pat else None
     include_quotes = spec.get("include_quotes", False)
+    # Under `unit: section`, zone 0 is the preamble before the first `##` —
+    # by construction not a section. A "every section contains X" claim must
+    # not judge it: whatever the preamble carries (an H1, a chapter brief,
+    # nothing at all) is a different question. The caller who wants the
+    # preamble judged reaches for a delimited zone or none.
+    zone = spec.get("zone") or {}
+    skip_preamble = zone.get("unit") == "section"
 
     offenders: list[tuple[Path, int, str]] = []
     unresolved: list[Path] = []
@@ -239,11 +246,9 @@ def contain_gaps(root: "Path", spec: dict,
             file_spans = [(0, len(text))]
 
         for i, (s, e) in enumerate(file_spans):
+            if skip_preamble and i == 0:
+                continue
             body = text[s:e]
-            # An empty zone has nothing to test against, and reporting one as
-            # "missing" would be a rule confidently wrong. `section_spans`
-            # emits an empty zone 0 for any file that opens on `##`, and every
-            # such file would otherwise trip every contain rule at zone 0.
             if not body.strip():
                 continue
             heading = _first_heading_line(body)

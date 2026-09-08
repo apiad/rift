@@ -171,7 +171,7 @@ program is filesystem behaviour, and a mocked test here would assert nothing.
 
 ## Status
 
-v0.8.0. Six rule kinds: `require` (does it appear), `forbid` (where does it
+v0.8.1. Six rule kinds: `require` (does it appear), `forbid` (where does it
 appear), `permit` (what appears that should not), `measure`/`expect` (what is
 this number), `unique` (does any value appear twice), `contain` (does every
 zone carry a required pattern). `forbid`, `permit` and `measure` take a `zone:`;

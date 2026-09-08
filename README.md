@@ -567,10 +567,16 @@ stream. It takes the same shape as every other zoned rule.
 | `where_heading_not:` | optional regex on the first heading line. Zones whose heading matches are **skipped** rather than judged — the apparatus filter |
 
 The report names the zone by index and echoes its heading text, because a
-`file#N` alone is a co-ordinate a reader cannot verify at a glance. **Empty
-zones are skipped, not flagged**: when a file opens on `##`, section-span zone 0
-is the empty preamble, and a `contain` rule over every section would otherwise
-trip on it in every such file.
+`file#N` alone is a co-ordinate a reader cannot verify at a glance.
+
+**Under `unit: section`, zone 0 is preamble and never judged** — by
+construction it is not a section. A chapter file that opens on `# Title\n<intro
+text>\n## First section` has an intro paragraph in zone 0, and "every section
+contains X" must not report it as a section missing X. Whatever a preamble
+carries (H1 title, chapter brief, nothing at all) is a different question; if
+you want to judge it, reach for a delimited zone or none. Empty zones are
+skipped for the same reason, one level down: a rule that cannot fail is worse
+than none, and neither can a rule confidently wrong.
 
 **A zone that resolves to nothing is reported as a broken rule**, not a passed
 one — the same convention `forbid` and `measure` use. A malformed delimited

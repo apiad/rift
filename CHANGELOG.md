@@ -4,6 +4,18 @@ All notable changes to this project are documented here. Format: Keep a Changelo
 
 ## [Unreleased]
 
+## [v0.8.1] - 2026-09-08
+
+### Fixes
+
+- **`contain` no longer flags the preamble under `unit: section`.** v0.8.0
+  skipped only *empty* zone 0 (the case where a file opens on `##`). A file
+  that opens on `# Title\n<intro>\n## First section` has non-empty preamble
+  in zone 0 that a "every section contains X" rule would flag as a section
+  missing X — but by construction zone 0 is preamble, not a section. Now
+  skipped unconditionally under `unit: section`. Caught immediately by
+  `books-computist-guide`, whose 22 chapter files all open on H1 + preamble.
+
 ## [v0.8.0] - 2026-09-08
 
 ### Features
