@@ -4,6 +4,50 @@ All notable changes to this project are documented here. Format: Keep a Changelo
 
 ## [Unreleased]
 
+## [v0.8.0] - 2026-09-08
+
+### Features
+
+- **`unique` rule kind** — "no extracted value appears twice." Consumes any
+  extractor except `list:` (a literal roster has no source to point at), with
+  two scopes: `across-files` (a value spanning more than one file, the
+  URL-per-chapter case) and `within-file` (a value repeating inside one file,
+  the footnote-label case). Report groups the sites under each colliding value,
+  because a duplicate is not a single-site claim.
+
+  The kind rejects `zone:` outright. Uniqueness is a claim about the extraction
+  stream as a whole; narrowing it to a region would be the exact surprise the
+  kind is meant to prevent.
+
+  New public helper `extract_with_sites(root, config) -> [(value, path, line)]`
+  mirrors `extract` with per-occurrence provenance. Per-file extractors
+  (`paths`, `files`, `yaml_keys`) report line 1 — the file locates the
+  duplicate, and the exact key line is not what a duplicate check needs.
+
+- **`contain` rule kind** — "every zone in scope matches this pattern." The
+  universal-over-zones companion to `forbid`'s existential-per-site shape. Its
+  region spec is inline rather than under `extract`, because the region is the
+  *subject* of the claim rather than a filter on an extraction stream — the one
+  kind for which that is true.
+
+  Keys: `in`, `zone` (required), `matches` (regex), and optional
+  `where_heading_not` to skip apparatus sections (Suggested Reading, Further
+  Reading) by heading regex rather than by listing them one-by-one at the call
+  site. The report echoes the first heading line of each offending zone, because
+  `file#N` alone is a co-ordinate a reader cannot verify at a glance.
+
+  Empty zones are skipped, not flagged: when a file opens on `##`,
+  section-span zone 0 is the empty preamble, and a `contain` rule over every
+  section would otherwise trip on it in every such file. An unresolvable zone
+  is reported as a broken rule (not a passed one), same convention `forbid`
+  and `measure` use.
+
+- **Third real consumer.** `repos/books-computist-guide/.rift.yaml` retired
+  `bin/lint-partition` — three checks that lived outside rift because they had
+  no expression there. Two of them are `unique` and `contain` rules now; the
+  third (a heading-length cap) turned out to already be expressible as a
+  `forbid` with `as: regex` and negative-lookahead, no code change needed.
+
 ### Documentation
 
 - **The token-vs-word gap, promoted to the README.** v0.7.0 put it in

@@ -94,6 +94,98 @@ def extract(root: Path, config: dict) -> set[str]:
     return results
 
 
+def extract_with_sites(root: Path, config: dict) -> list[tuple[str, Path, int]]:
+    """Same extractors as `extract`, but yields (value, path, line) triples.
+
+    `unique` reports every site of a duplicated value, not just the value, so
+    each occurrence has to carry its provenance through the pipeline. Line is
+    1-indexed. For extractors whose entity is the file itself (`paths`,
+    `files`, `dirs_with`) or whose value has no natural line (`yaml_keys`,
+    `yaml_values`), line is 1 — a duplicated file is already located by its
+    path. For `regex`, `lines` and `env_names`, the line is the match's.
+
+    `list:` has no source file and is rejected at CLI validation time. It
+    yields `[]` here rather than raising, because the extractor is a pure
+    dispatch and the caller decides which kinds it makes sense to feed.
+    """
+    if "list" in config:
+        return []
+
+    if "paths" in config:
+        return [(str(p.relative_to(root)), p, 1)
+                for p in resolve_globs(root, config["paths"])]
+
+    if "files" in config:
+        results = []
+        for path in sorted(root.glob(config["files"])):
+            results.append((path.stem if path.is_file() else path.name, path, 1))
+        return results
+
+    if "dirs_with" in config:
+        results = []
+        for match in sorted(root.rglob(config["dirs_with"])):
+            if match.is_file() and not _is_ignored(match):
+                results.append((match.parent.name, match, 1))
+        return results
+
+    matching_files = resolve_globs(root, config.get("file", []))
+    results: list[tuple[str, Path, int]] = []
+
+    if "yaml_keys" in config:
+        for f in matching_files:
+            try:
+                node = _navigate_yaml(yaml.safe_load(f.read_text()), config["yaml_keys"])
+                if isinstance(node, dict):
+                    results.extend((str(k), f, 1) for k in node.keys())
+            except Exception:
+                pass
+
+    elif "yaml_values" in config:
+        for f in matching_files:
+            try:
+                node = _navigate_yaml(yaml.safe_load(f.read_text()), config["yaml_values"])
+                if isinstance(node, dict):
+                    results.extend((str(v), f, 1) for v in node.values())
+                elif isinstance(node, list):
+                    results.extend((str(v), f, 1) for v in node)
+            except Exception:
+                pass
+
+    elif config.get("lines"):
+        for f in matching_files:
+            try:
+                for i, line in enumerate(f.read_text().splitlines(), 1):
+                    stripped = line.strip()
+                    if stripped and not stripped.startswith("#"):
+                        results.append((stripped, f, i))
+            except Exception:
+                pass
+
+    elif config.get("env_names"):
+        for f in matching_files:
+            try:
+                for i, line in enumerate(f.read_text().splitlines(), 1):
+                    m = re.match(r'^([A-Z_][A-Z0-9_]*)=', line)
+                    if m:
+                        results.append((m.group(1), f, i))
+            except Exception:
+                pass
+
+    elif "regex" in config:
+        pattern = re.compile(config["regex"], re.MULTILINE)
+        for f in matching_files:
+            try:
+                text = f.read_text()
+                for m in pattern.finditer(text):
+                    value = _captured(m).strip()
+                    line = text.count("\n", 0, m.start()) + 1
+                    results.append((value, f, line))
+            except Exception:
+                pass
+
+    return results
+
+
 def _captured(m: re.Match) -> str:
     """The first group that actually matched, or the whole match if there are none.
 

@@ -10,16 +10,18 @@ from rich.console import Console
 from rich.table import Table
 
 from . import measure
-from .extractor import extract
+from .extractor import extract, extract_with_sites
 from .text import mask, strip_patterns, zone_spans
-from .matcher import check, find, resolve_globs, unpermitted
+from .matcher import check, contain_gaps, duplicates, find, resolve_globs, unpermitted
 
 console = Console()
 
-# The rule kinds. A rule carries exactly one; `extract` feeds all but `measure`,
-# since where a set of strings comes from is orthogonal to what you assert
-# about it.
-RULE_KINDS = ("require", "forbid", "permit", "measure")
+# The rule kinds. A rule carries exactly one; `extract` feeds four of them
+# (all but `measure` and `contain`), since where a set of strings comes from
+# is orthogonal to what you assert about it. `contain` is the one universal
+# claim rift can make — every zone must contain a match — and takes its
+# region spec inline rather than through an extractor.
+RULE_KINDS = ("require", "forbid", "permit", "measure", "unique", "contain")
 
 # A zoned `measure` takes exact counts, not statistics. The line is that a count
 # over a span is as correct as a count over a file, where a ratio, a coefficient
@@ -73,12 +75,24 @@ def _validate_zone(rule: dict, kind: str) -> None:
     # `check` returns a bool and early-returns on the first file that matches:
     # it is existential over the document set. A zone narrows *where in a file*
     # the search happens, so it cannot turn any of the per-file claims that
-    # wanted it into something `require` can answer.
+    # wanted it into something `require` can answer. `contain` is the kind
+    # that *does* express the per-file/per-zone claim, and it takes a zone.
     if kind == "require":
         raise ConfigError(
             f"rule {name!r}: zone: is not available on require — `check` is "
             "existential over the file set, so a zone cannot express a per-file "
-            "claim; it unlocks when per_file: does"
+            "claim; use contain: instead, which is universal over zones"
+        )
+
+    # `unique` consumes an already-extracted site list rather than reading
+    # documents by zone: uniqueness is about the extraction stream, not about
+    # regions inside any one document. A zone would silently narrow which
+    # sites are considered, and the natural expectation is that unique looks
+    # at every occurrence its extractor produced.
+    if kind == "unique":
+        raise ConfigError(
+            f"rule {name!r}: zone: is not available on unique — uniqueness is "
+            "about the extracted site list, not about regions inside a file"
         )
 
     unknown = set(zone) - set(_ZONE_KEYS)
@@ -460,6 +474,57 @@ def check_cmd(path, config):
                 f"{p.relative_to(root)}:{line}   {token}" for p, line, token in sites
             ]
             label = "unpermitted"
+        elif kind == "unique":
+            unique_spec = rule["unique"]
+            scope = unique_spec.get("scope", "across-files")
+            if scope not in ("across-files", "within-file"):
+                console.print(
+                    f"[red]Config error:[/red] in rule {rule['name']!r}: "
+                    f"unique scope must be 'across-files' or 'within-file', not {scope!r}"
+                )
+                sys.exit(2)
+            if "list" in rule["extract"]:
+                console.print(
+                    f"[red]Config error:[/red] in rule {rule['name']!r}: "
+                    "unique cannot use extract: list: — a list has no source file, "
+                    "so there is nowhere to report a duplicate"
+                )
+                sys.exit(2)
+            sites = extract_with_sites(root, rule["extract"])
+            groups = duplicates(sites, scope)
+            failures = []
+            for group in groups:
+                value = group[0][0]
+                locations = ", ".join(
+                    f"{p.relative_to(root)}:{line}" for _, p, line in group
+                )
+                failures.append(f"{value}   in {len(group)} sites: {locations}")
+            label = "duplicates"
+        elif kind == "contain":
+            spec = rule["contain"]
+            if "matches" not in spec:
+                console.print(
+                    f"[red]Config error:[/red] in rule {rule['name']!r}: "
+                    "contain requires matches: — the regex every zone must contain"
+                )
+                sys.exit(2)
+            try:
+                re.compile(spec["matches"])
+                if spec.get("where_heading_not"):
+                    re.compile(spec["where_heading_not"])
+            except re.error as e:
+                console.print(
+                    f"[red]Config error:[/red] in rule {rule['name']!r}: "
+                    f"malformed contain regex — {e}"
+                )
+                sys.exit(2)
+            spans, unresolved = _zoned_spans(root, spec)
+            offenders, _ = contain_gaps(root, spec, spans)
+            failures = _zone_failures(root, unresolved) + [
+                f"{f.relative_to(root)}#{i}   {heading[:60]}"
+                for f, i, heading in offenders
+            ]
+            label = "missing"
         elif kind == "measure":
             try:
                 values, unresolved = _values(root, rule["measure"])
@@ -591,6 +656,56 @@ def list_cmd(path, config, rule):
                 icon = "[red]✗[/red]" if f in why else "[green]✓[/green]"
                 reason = f"   {'; '.join(why[f])}" if f in why else ""
                 console.print(f"  {icon} {_render_key(root, f)}   {v:.2f}{reason}")
+        elif kind == "unique":
+            # Every extracted site with its provenance, marked ✗ when its value
+            # collides with the uniqueness scope. A flat list would make
+            # duplicates hard to spot; grouping by value with the scope's key
+            # matches the report shape from `check`.
+            scope = r["unique"].get("scope", "across-files")
+            sites = extract_with_sites(root, r["extract"])
+            groups = duplicates(sites, scope)
+            colliding = {(s[0], s[1], s[2]) for g in groups for s in g}
+            console.print(f"\n[bold]{r['name']}[/bold]  ({len(sites)} sites)")
+            for value, path, line in sites:
+                icon = "[red]✗[/red]" if (value, path, line) in colliding else "[green]✓[/green]"
+                console.print(f"  {icon} {path.relative_to(root)}:{line}   {value}")
+        elif kind == "contain":
+            # Every zone the rule scoped, marked ✗ when it lacks the required
+            # match. Zones filtered by `where_heading_not` are skipped from the
+            # list entirely rather than shown as pass — a zone the rule chose
+            # not to check is not a fact the report should report on.
+            spec = r["contain"]
+            spans, unresolved = _zoned_spans(root, spec)
+            offenders, _ = contain_gaps(root, spec, spans)
+            offender_keys = {(f, i) for f, i, _ in offenders}
+            console.print(f"\n[bold]{r['name']}[/bold]")
+            _print_unresolved(root, unresolved)
+
+            exclude_pat = spec.get("where_heading_not")
+            exclude = re.compile(exclude_pat) if exclude_pat else None
+            from .matcher import _first_heading_line
+
+            for doc_file in resolve_globs(root, spec.get("in", "docs/**/*.md")):
+                try:
+                    text = mask(doc_file.read_text(),
+                                spec.get("include_quotes", False))
+                except Exception:
+                    continue
+                if spans is not None:
+                    file_spans = spans.get(doc_file)
+                    if file_spans is None:
+                        continue
+                else:
+                    file_spans = [(0, len(text))]
+                for i, (s, e) in enumerate(file_spans):
+                    body = text[s:e]
+                    if not body.strip():
+                        continue
+                    heading = _first_heading_line(body)
+                    if exclude and exclude.search(heading):
+                        continue
+                    icon = "[red]✗[/red]" if (doc_file, i) in offender_keys else "[green]✓[/green]"
+                    console.print(f"  {icon} {doc_file.relative_to(root)}#{i}   {heading[:60]}")
 
 
 @main.command("stats")

@@ -2,7 +2,7 @@ import re
 from pathlib import Path
 
 from .extractor import resolve_globs
-from .text import line_of, mask, sentence_start_offsets, strip_patterns, token_spans
+from .text import line_of, mask, sentence_start_offsets, strip_patterns, token_spans, zone_spans
 
 
 def check(root: Path, entity: str, require: dict) -> bool:
@@ -184,6 +184,126 @@ def _exclusions(phrases, flags: int) -> list[re.Pattern]:
     if isinstance(phrases, str):
         phrases = [phrases]
     return [re.compile(_flexible_whitespace(p), flags) for p in phrases]
+
+
+def contain_gaps(root: "Path", spec: dict,
+                 spans: dict | None = None
+                 ) -> tuple[list[tuple["Path", int, str]], list["Path"]]:
+    """Zones that lack a required pattern, plus files whose zone matched nothing.
+
+    Answers *does every one of these regions contain what it must?* — the
+    universal-over-zones claim `require` cannot express because `check` is
+    existential over the file set. A section without its BRIEF, a chapter
+    without its epigraph, a slide without a footer: `forbid` locates bad
+    text, `contain` locates missing text.
+
+    `spans` is the rule's resolved zone, precomputed once per file by the
+    caller for the same reason `find` takes it. `None` means no zone —
+    the whole file is one region, so a rule with no zone is a per-file
+    require that reports every file the pattern is absent from.
+
+    Each offender is `(path, zone_index, heading)`. `heading` is the first
+    non-blank line inside the zone with its leading `##` (or `>`, or list
+    marker) stripped — enough for a reader to recognise which section the
+    report points at. `where_heading_not:` filters zones whose heading
+    matches a regex, so apparatus sections (Suggested Reading, etc.) opt
+    out of the check without the rule listing them one by one.
+    """
+    matches = re.compile(spec["matches"], re.MULTILINE)
+    exclude_pat = spec.get("where_heading_not")
+    exclude = re.compile(exclude_pat) if exclude_pat else None
+    include_quotes = spec.get("include_quotes", False)
+
+    offenders: list[tuple[Path, int, str]] = []
+    unresolved: list[Path] = []
+
+    for doc_file in resolve_globs(root, spec.get("in", "docs/**/*.md")):
+        try:
+            text = mask(doc_file.read_text(), include_quotes)
+        except Exception:
+            continue
+
+        if spans is not None:
+            file_spans = spans.get(doc_file)
+            if file_spans is None:
+                # Precomputed caller already tracked this as unresolved; the
+                # CLI adds it to the report. Not our job to re-report it.
+                continue
+        elif spec.get("zone") is not None:
+            # Fall-back path for direct callers who did not precompute.
+            file_spans = zone_spans(text, spec["zone"])
+            if not file_spans:
+                unresolved.append(doc_file)
+                continue
+        else:
+            file_spans = [(0, len(text))]
+
+        for i, (s, e) in enumerate(file_spans):
+            body = text[s:e]
+            # An empty zone has nothing to test against, and reporting one as
+            # "missing" would be a rule confidently wrong. `section_spans`
+            # emits an empty zone 0 for any file that opens on `##`, and every
+            # such file would otherwise trip every contain rule at zone 0.
+            if not body.strip():
+                continue
+            heading = _first_heading_line(body)
+            if exclude and exclude.search(heading):
+                continue
+            if not matches.search(body):
+                offenders.append((doc_file, i, heading))
+
+    return offenders, unresolved
+
+
+def _first_heading_line(body: str) -> str:
+    """The first non-blank line of a zone with common markdown chrome stripped.
+
+    Enough to recognise the section in a report; not a parse. `##`, `>` and
+    list markers are stripped because they are how the line was written, not
+    what the line says.
+    """
+    for line in body.splitlines():
+        stripped = line.strip()
+        if stripped:
+            return re.sub(r'^(?:#+|>+|[-*+]|\d+\.)\s*', '', stripped)
+    return ""
+
+
+def duplicates(sites: list[tuple[str, "Path", int]],
+               scope: str = "across-files") -> list[list[tuple]]:
+    """Group extraction sites by value; return groups that violate uniqueness.
+
+    Answers *what appears where it should not repeat?* Unlike `find` and
+    `check`, this does not read any document — it consumes an already-extracted
+    site list. The dispatch is on `scope`:
+
+    - `across-files`: a group whose distinct file set has more than one file.
+      Two occurrences of the same URL in one chapter is fine (the chapter
+      links twice); the same URL in two chapters is what breaks the "one
+      week's reading per chapter" claim.
+    - `within-file`: per-file groups where the value appears more than once.
+      A footnote label defined twice in one document; a heading anchor
+      collided within a single page. Across files is expected here.
+
+    Site order inside each group is preserved so callers can format them in
+    input order. Groups are ordered by value for a stable report.
+    """
+    if scope == "across-files":
+        by_value: dict = {}
+        for site in sites:
+            by_value.setdefault(site[0], []).append(site)
+        return [entries for _, entries in sorted(by_value.items())
+                if len({e[1] for e in entries}) > 1]
+
+    if scope == "within-file":
+        by_key: dict = {}
+        for site in sites:
+            by_key.setdefault((site[0], site[1]), []).append(site)
+        return [entries for _, entries in sorted(by_key.items(),
+                                                  key=lambda kv: (str(kv[0][1]), kv[0][0]))
+                if len(entries) > 1]
+
+    raise ValueError(f"unknown scope {scope!r}")
 
 
 def _flexible_whitespace(literal: str) -> str:

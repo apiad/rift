@@ -66,7 +66,7 @@ rift stats 'ch*.md' -m sentence -s '\{[~>][^}]*\}'   # filter metrics, strip mar
 
 ## Config
 
-`.rift.yaml` is a list of rules. A rule carries **exactly one** of four shapes;
+`.rift.yaml` is a list of rules. A rule carries **exactly one** of six shapes;
 more than one is a config error.
 
 | Shape | Asks | Reports |
@@ -75,9 +75,13 @@ more than one is a config error.
 | `extract` + `forbid` | where does each extracted string appear? | `file:line` sites |
 | `extract` + `permit` | what appears that is **not** in the extracted set? | `file:line` sites |
 | `measure` + `expect` | what is this number, and is it in bounds? | values and thresholds |
+| `extract` + `unique` | does each extracted value appear only once? | groups of duplicate sites |
+| `contain` | does every zone contain a required pattern? | zones that lack the pattern |
 
-`extract` feeds the first three: where a set of strings comes from is orthogonal
-to what you then assert about it.
+`extract` feeds five of the six: where a set of strings comes from is orthogonal
+to what you then assert about it. `contain` is the exception — it is the one
+kind that asks a *universal* question over zones rather than an existential
+one over a file set, so its region spec is inline.
 
 ```yaml
 rules:
@@ -396,6 +400,44 @@ your renderer:
       vs-siblings: 2.5
 ```
 
+### `unique` — no value appears twice
+
+```yaml
+  - name: "no external URL cited in two chapters"
+    extract:
+      file: "chapters/*.md"
+      regex: '\((https?://[^)]+)\)'
+    unique:
+      scope: across-files    # or within-file
+```
+
+```
+✗  no external URL cited in two chapters  [1 collision]
+   https://example.com/paper
+     chapters/ch03.md:41
+     chapters/ch07.md:12
+```
+
+The mirror shape of `forbid`: same extractors, same `file:` glob, but the question
+is about the extraction stream itself rather than the document. A duplicate is
+reported as the value followed by every site — a collision is not a single-site
+claim, and a report that names only one occurrence tells a reader half the story.
+
+| `scope:` | A group is a collision when… |
+|---|---|
+| `across-files` (default) | the value appears in **more than one file**. Repeats within a single file are counted but do not, alone, trip the rule. The URL-per-chapter case. |
+| `within-file` | the value appears **more than once inside any one file**. A repeat in each of two files is fine; twice in one file is not. The footnote-label case. |
+
+`extract: {list: [...]}` is rejected — a literal list is a set the config *writes*,
+so uniqueness in it is a fact about the config's own typos, not the document. Every
+other extractor is fair game: `regex` for URLs and identifiers, `yaml_keys` for
+config rosters, `paths`/`files` for filename collisions.
+
+**`unique` cannot take a zone.** Uniqueness is a claim about the extraction stream
+as a whole; narrowing it silently to a region would be the exact surprise the kind
+is meant to prevent. If you want "no URL twice within a chapter's intro", the
+right shape is a zoned `forbid` with `max_per_file`, not a zoned `unique`.
+
 ### `zone:` — part of a file, not all of it
 
 Most style rules are about a *region*: the opening paragraph, the last section,
@@ -490,6 +532,49 @@ claim (*the promise must land in the first 100 words*), and existentially all of
 them pass the moment one chapter in forty complies. A zone narrows where in a file
 the search happens; it cannot change what the question is asked over. It unlocks
 when `per_file:` does.
+
+### `contain` — every zone carries a required pattern
+
+```yaml
+  - name: "every section opens with a brief"
+    contain:
+      in: "chapters/*.md"
+      zone: { unit: section }
+      matches: '^question · \S'
+      where_heading_not: '^(Suggested Reading|Further Reading)'
+```
+
+```
+✗  every section opens with a brief  [1 zone lacks pattern]
+   chapters/ch03.md#2   What is knowledge?
+```
+
+`contain` is the *universal* claim over zones: every zone in scope must match
+`matches`. It is what a per-file `require` would look like if `require` were not
+existential over the document set — and it is why `require` bans `zone:` rather
+than growing a `per_file:` toggle. The two questions have opposite shape and
+belong to opposite kinds.
+
+The zone spec is inline (not under `extract`) because `contain` is the one kind
+whose region is the subject of the claim rather than a filter on an extraction
+stream. It takes the same shape as every other zoned rule.
+
+| Key | Means |
+|---|---|
+| `in:` | doc glob or list of globs — same shape as `forbid.in` |
+| `zone:` | required. `unit: section` is the common case; delimited zones work too |
+| `matches:` | required regex, MULTILINE. A zone passes when its body matches |
+| `where_heading_not:` | optional regex on the first heading line. Zones whose heading matches are **skipped** rather than judged — the apparatus filter |
+
+The report names the zone by index and echoes its heading text, because a
+`file#N` alone is a co-ordinate a reader cannot verify at a glance. **Empty
+zones are skipped, not flagged**: when a file opens on `##`, section-span zone 0
+is the empty preamble, and a `contain` rule over every section would otherwise
+trip on it in every such file.
+
+**A zone that resolves to nothing is reported as a broken rule**, not a passed
+one — the same convention `forbid` and `measure` use. A malformed delimited
+bound is a rule that cannot fail, and a rule that cannot fail licenses shipping.
 
 ### `measure` counts, `forbid` locates
 

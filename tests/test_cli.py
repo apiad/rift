@@ -679,7 +679,7 @@ def test_a_zone_on_a_require_rule_is_a_config_error(repo, write):
     result = runner.invoke(main, ["check", str(repo)])
     assert result.exit_code == 2
     assert "zoned require" in result.output
-    assert "per_file" in result.output
+    assert "contain" in result.output
 
 
 def test_a_zone_beside_require_exists_is_a_config_error(repo, write):

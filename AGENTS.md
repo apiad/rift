@@ -47,6 +47,7 @@ modules is a private helper.
 | Function | Contract |
 |---|---|
 | `extract(root, config) -> set[str]` | dispatches on the single extractor key in `config`. **Swallows every read error**, so a malformed or missing source yields the empty set — see the blind spot below. |
+| `extract_with_sites(root, config) -> [(str, Path, int)]` | the site-preserving mirror of `extract`. Yields one triple per **occurrence** (not per value), so a value repeated in one file appears twice. `list:` yields `[]` — a literal list has no source to point at, and the CLI rejects the shape. Per-file extractors (`paths`, `files`, `yaml_keys`, `yaml_values`) report line 1. `unique` is the sole consumer. |
 | `resolve_globs(root, patterns) -> list[Path]` | one glob or a list of them, deduplicated and sorted. Every `in:`, `file:` and `files:` goes through it. |
 
 **`src/rift/matcher.py` — what counts as satisfied, banned, or unpermitted.**
@@ -56,6 +57,8 @@ modules is a private helper.
 | `check(root, entity, require) -> bool` | *is it anywhere?* Returns as soon as it knows. Reads the document **unmasked** — `require` asks whether something is documented, and a code fence is documentation. Takes no zone; see the README for why. |
 | `find(root, entity, forbid, spans=None) -> [(Path, int, str)]` | *where is it?* Visits every file and every occurrence, no early return. Reads **masked**. |
 | `unpermitted(root, allowed, permit, spans=None) -> [(Path, int, str)]` | *what is here that should not be?* Takes the **whole allowed set** and walks the document once — unlike the two above, which take one entity and are called once per extracted string. |
+| `duplicates(sites, scope) -> [[(str, Path, int)]]` | *what appears twice?* Consumes `extract_with_sites` output. `scope='across-files'` groups values that span more than one file; `scope='within-file'` groups values that repeat inside one file. Unknown scope raises. |
+| `contain_gaps(root, spec, spans=None) -> ([(Path, int, str)], [Path])` | *does every zone match?* Walks each zone in scope; a zone whose body does not match `spec['matches']` is an offender (path, zone-index, first-heading-line). Empty zones and `where_heading_not` hits are skipped. Files whose `zone:` resolves to nothing come back in the second list. |
 
 `spans` is a rule's resolved `zone:`, precomputed **once per file** by the caller
 and passed down. `None` means the rule has no zone; a dict means a file absent
@@ -168,13 +171,15 @@ program is filesystem behaviour, and a mocked test here would assert nothing.
 
 ## Status
 
-v0.7.0. Four rule kinds: `require` (does it
-appear), `forbid` (where does it appear), `permit` (what appears that should
-not), `measure`/`expect` (what is this number). Three of the four take a
-`zone:` — part of a file rather than all of it; `require` does not, and the
-README says why. Two real consumers — `repos/ainbox/.rift.yaml` (5 rules) and
+v0.8.0. Six rule kinds: `require` (does it appear), `forbid` (where does it
+appear), `permit` (what appears that should not), `measure`/`expect` (what is
+this number), `unique` (does any value appear twice), `contain` (does every
+zone carry a required pattern). `forbid`, `permit` and `measure` take a `zone:`;
+`contain` requires one; `require` and `unique` reject it, and the README says
+why in each case. Three real consumers — `repos/ainbox/.rift.yaml` (5 rules),
 `repos/books-tsoc/.rift.yaml` (25 rules, which replaced ~450 lines of bespoke
-Python test code).
+Python test code), and `repos/books-computist-guide/.rift.yaml` (20 rules,
+which replaced `bin/lint-partition`).
 
 CI runs the suite on push and PR (3.11, 3.13); a `v*` tag runs `release.yml`,
 which gates on the suite, checks the tag matches `pyproject.toml`, builds
