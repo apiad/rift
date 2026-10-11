@@ -4,6 +4,8 @@ All notable changes to this project are documented here. Format: Keep a Changelo
 
 ## [Unreleased]
 
+## [v0.9.0] - 2026-10-11
+
 ### Features
 
 - **`sub:` on `extract:`** rewrites every extracted string with `re.sub`

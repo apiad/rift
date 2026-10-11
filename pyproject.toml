@@ -1,6 +1,6 @@
 [project]
 name = "rift"
-version = "0.8.1"
+version = "0.9.0"
 description = "Documentation linter — checks that docs reflect codebase reality"
 readme = "README.md"
 license = "MIT"
