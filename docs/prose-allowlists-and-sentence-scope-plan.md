@@ -5,7 +5,7 @@
 mutants killed (one survived first and is recorded under Slice C). `rift check`
 over a frozen `books-tsoc` snapshot is byte-identical before and after.
 **E.3 (version bump and tag) is deliberately NOT done** — pushing a `v*` tag
-fires `release.yml`, which publishes, and that is Alex's call to make.
+fires `release.yml`, which publishes, and that is the maintainer's call to make.
 **Target:** `v0.4.0`.
 
 Four slices, ordered cheapest-first so the risky one lands last against a suite
