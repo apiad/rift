@@ -1133,3 +1133,50 @@ def test_word_count_with_a_zone_is_accepted_end_to_end(repo, write):
     config(write, zoned_measure(metric="word-count"))
 
     assert runner.invoke(main, ["check", str(repo)]).exit_code == 0
+
+
+# ------------------------------------------------------------------ sub ----
+
+SUB_RULE = {
+    "name": "every op is documented",
+    "severity": "error",
+    "extract": {"file": "ops.py", "regex": r'op\("([\w.]+)"\)', "sub": [r"\.", "_"]},
+    "require": {"in": "help.md", "as": "mention"},
+}
+
+
+def test_check_passes_when_the_substituted_name_is_documented(repo, write):
+    write("ops.py", '@r.op("monitor.start")\n')
+    write("help.md", "Call `monitor_start` to watch a process.\n")
+    config(write, SUB_RULE)
+    result = runner.invoke(main, ["check", str(repo)])
+    assert result.exit_code == 0, result.output
+
+
+def test_check_fails_on_the_substituted_name_not_the_raw_one(repo, write):
+    # The raw spelling is in the docs; the rewritten one is not. Without `sub:`
+    # this rule would pass, which is how we know the rewrite reached matching.
+    write("ops.py", '@r.op("monitor.start")\n')
+    write("help.md", "Call `monitor.start` to watch a process.\n")
+    config(write, SUB_RULE)
+    result = runner.invoke(main, ["check", str(repo)])
+    assert result.exit_code == 1
+    assert "monitor_start" in result.output
+
+
+@pytest.mark.parametrize("sub", [
+    ["[unclosed", "_"],
+    [["(a)", r"\9"]],
+    "just-a-string",
+    ["only-one"],
+    [["a", "b", "c"]],
+    [["a", 1]],
+])
+def test_check_exits_two_on_a_malformed_sub(repo, write, sub):
+    write("ops.py", '@r.op("monitor.start")\n')
+    write("help.md", "monitor_start\n")
+    config(write, {**SUB_RULE, "extract": {**SUB_RULE["extract"], "sub": sub}})
+    for cmd in ("check", "list"):
+        result = runner.invoke(main, [cmd, str(repo)])
+        assert result.exit_code == 2, (cmd, result.output)
+        assert "sub:" in result.output

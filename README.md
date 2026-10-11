@@ -98,6 +98,7 @@ rules:
 ### Extractors
 
 Exactly one per rule. `files` and `dirs_with` stand alone; the rest need a `file:` glob.
+`sub:` is not an extractor but a rewrite that any of them can carry.
 
 | Key | Yields |
 |---|---|
@@ -111,6 +112,7 @@ Exactly one per rule. `files` and `dirs_with` stand alone; the rest need a `file
 | `files: <glob>` | The *stem* of each matching file (`apps/one.py` → `one`). Standalone, and **lossy** — `a/index.md` and `b/index.md` collapse to one entity. |
 | `paths: <glob>` | The path of each matching file, relative to the root (`apps/one.py`). Standalone. Reach for this over `files:` whenever two matches could share a stem. |
 | `dirs_with: <glob>` | The parent directory name of each matching file (`apps/alpha/Dockerfile` → `alpha`). Recursive; skips `.git`, `.venv`, `__pycache__`, `node_modules`, `.playground`. Standalone. |
+| `sub: [pattern, replacement]` | Not an extractor: a rewrite applied with `re.sub` to every extracted string before matching. One pair, or a list of pairs applied in order. Works with every extractor above. Use it when the code spells a name one way and the docs another: `sub: ['\.', '_']` turns `monitor.start` into `monitor_start`. The replacement takes group references (`\1`). A malformed pattern or replacement exits 2. |
 
 ### Matchers
 

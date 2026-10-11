@@ -4,6 +4,22 @@ All notable changes to this project are documented here. Format: Keep a Changelo
 
 ## [Unreleased]
 
+### Features
+
+- **`sub:` on `extract:`** rewrites every extracted string with `re.sub`
+  before matching. One `[pattern, replacement]` pair or a list of pairs,
+  applied in order, with every extractor. It exists for a code base that
+  registers a name as `monitor.start` while its docs call it
+  `monitor_start`: `sub: ['\.', '_']` makes the two comparable, so a rule
+  can check the roster in both directions. A malformed pattern, replacement
+  or shape exits 2 before any rule runs.
+
+### Fixes
+
+- **rift's own "every extractor key is documented" rule could not fail on
+  `sub`.** `as: table_cell` is a substring match, and "sub-key" in another
+  table satisfied it. The rule now requires a row of its own (`wrap:`).
+
 ## [v0.8.1] - 2026-09-08
 
 ### Fixes

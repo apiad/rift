@@ -17,8 +17,45 @@ def resolve_globs(root: Path, patterns) -> list[Path]:
     return sorted({f for f in found if f.is_file()})
 
 
+def substitutions(config: dict) -> list[tuple[re.Pattern, str]]:
+    """`sub:` as compiled (pattern, replacement) pairs, in the order they apply.
+
+    A codebase can register a name one way (`monitor.start`) while its docs
+    spell it another (`monitor_start`), and no matcher can bridge the two. One
+    pair or a list of pairs. Raises ValueError on a malformed shape and
+    re.error on a malformed pattern or replacement, so the CLI rejects the rule
+    before any work instead of a typo silently matching nothing.
+    """
+    sub = config.get("sub")
+    if sub is None:
+        return []
+    if isinstance(sub, list) and sub and isinstance(sub[0], str):
+        sub = [sub]
+    if not isinstance(sub, list) or not all(
+        isinstance(pair, list) and len(pair) == 2 and all(isinstance(s, str) for s in pair)
+        for pair in sub
+    ):
+        raise ValueError("sub: must be a [pattern, replacement] pair or a list of them")
+    pairs = [(re.compile(pattern), repl) for pattern, repl in sub]
+    for pattern, repl in pairs:
+        # A bad group reference in the replacement is only caught by using it.
+        pattern.sub(repl, "")
+    return pairs
+
+
+def _rewrite(value: str, pairs: list[tuple[re.Pattern, str]]) -> str:
+    for pattern, repl in pairs:
+        value = pattern.sub(repl, value)
+    return value
+
+
 def extract(root: Path, config: dict) -> set[str]:
-    """Extract a set of entity strings from the codebase."""
+    """Extract a set of entity strings from the codebase, rewritten by `sub:`."""
+    pairs = substitutions(config)
+    return {_rewrite(v, pairs) for v in _extract(root, config)}
+
+
+def _extract(root: Path, config: dict) -> set[str]:
     results = set()
 
     if "list" in config:
@@ -108,6 +145,11 @@ def extract_with_sites(root: Path, config: dict) -> list[tuple[str, Path, int]]:
     yields `[]` here rather than raising, because the extractor is a pure
     dispatch and the caller decides which kinds it makes sense to feed.
     """
+    pairs = substitutions(config)
+    return [(_rewrite(v, pairs), path, line) for v, path, line in _extract_with_sites(root, config)]
+
+
+def _extract_with_sites(root: Path, config: dict) -> list[tuple[str, Path, int]]:
     if "list" in config:
         return []
 
