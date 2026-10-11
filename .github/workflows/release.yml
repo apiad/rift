@@ -29,10 +29,8 @@ jobs:
         run: uv run pytest -q
 
       # The docs half of the same gate. rift's own rules assert that its README
-      # and AGENTS.md still describe its code — so a tag cannot ship a README
-      # missing a matcher, or an AGENTS.md claiming the wrong version. That
-      # second one is not hypothetical: AGENTS.md sat at v0.2.0 while pyproject
-      # said 0.3.0, and nothing noticed for a month.
+      # and DESIGN.md still describe its code, so a tag cannot ship a README
+      # missing a matcher or a DESIGN.md missing a module.
       - name: rift lints itself
         run: uv run rift check .
 

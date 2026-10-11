@@ -18,11 +18,13 @@ _anchors:
   docs: &docs
     - "README.md"
     - "AGENTS.md"
+    - "DESIGN.md"
     - "know-how/*.md"
     - "docs/*.md"
   prose: &prose
     - "README.md"
     - "AGENTS.md"
+    - "DESIGN.md"
     - "know-how/*.md"
 
 rules:
@@ -114,13 +116,14 @@ rules:
 
   # `paths:` rather than `files:`, which yields bare stems and would collapse
   # two modules sharing a name. The `[a-z]*` glob skips `__init__.py`, which is
-  # empty and would be noise to describe.
-  - name: "every module is described in AGENTS.md"
+  # empty and would be noise to describe. DESIGN.md rather than AGENTS.md since
+  # the module contracts moved there: a module is architecture, not a goal.
+  - name: "every module is described in DESIGN.md"
     severity: error
     extract:
       paths: "src/rift/[a-z]*.py"
     require:
-      in: "AGENTS.md"
+      in: "DESIGN.md"
       as: mention
 
   # ---------------------------------------------------- claims vs reality ----
@@ -141,16 +144,41 @@ rules:
     require:
       exists: true
 
-  # Catches the drift that was live in this repo on 2026-08-27: AGENTS.md
-  # claimed v0.2.0 while pyproject said 0.3.0, and nothing noticed for a month.
-  - name: "the version in AGENTS.md matches pyproject"
+  # REMOVED "the version in AGENTS.md matches pyproject". It caught real drift
+  # (AGENTS.md claimed v0.2.0 while pyproject said 0.3.0, for a month), but the
+  # fix is to not keep a version in a doc at all: AGENTS.md no longer carries
+  # one, and release.yml checks the tag against pyproject.
+
+  # ------------------------------------------------------- agent docs ----
+  # AGENTS.md holds goals and where things live; anything a command can print
+  # stays out of it, because a hand-kept copy goes stale without anyone noticing.
+
+  - name: "every know-how doc carries a single-line when: in its frontmatter"
+    severity: error
+    contain:
+      in: "know-how/*.md"
+      zone: { before: '^# ' }
+      matches: '\A---\n(?:.*\n)*?when: \S.*\n(?:.*\n)*?---\n'
+
+  # forbid masks inline code; extracting from the raw file and requiring a file
+  # that never exists reports every name, which is the ban. The menu command is
+  # how a reader finds a doc, so naming one here is a second, stale index.
+  - name: "AGENTS.md names no individual know-how doc"
     severity: error
     extract:
-      file: "pyproject.toml"
-      regex: '^version = "([^"]+)"'
+      file: "AGENTS.md"
+      regex: '(know-how/[A-Za-z0-9_-]+\.md)'
     require:
+      in: "this-file-never-exists.md"
+
+  - name: "AGENTS.md carries no status log"
+    severity: error
+    extract:
+      list: ['Task \d+ done', '\d+ tests\b', 'shipped \(20\d\d-', 'as of 20\d\d-', 'current status', 'v\d+\.\d+\.\d+']
+    forbid:
       in: "AGENTS.md"
-      as: mention
+      as: regex
+      case_insensitive: true
 
   # ------------------------------------------------------------- prose ----
   # rift ships no banned list; this one is rift's own taste, which is where
@@ -189,9 +217,9 @@ rules:
 # feature onto a repo that does not need it is how a config starts lying.
 #
 # `measure` / `vs-siblings` — needs at least four files in a set to judge, and
-# rift has two know-how docs. The rule would sit permanently yellow reporting
-# "too small to judge", and a rule that is always yellow trains you to ignore
-# yellow. Revisit at four.
+# rift has fewer than four know-how docs. The rule would sit permanently yellow
+# reporting "too small to judge", and a rule that is always yellow trains you to
+# ignore yellow. Revisit at four.
 #
 # `permit` — reads MASKED prose, so inline code and fences are blank to it. Every
 # identifier in this README lives in backticks, which makes `permit` structurally

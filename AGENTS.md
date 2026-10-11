@@ -1,196 +1,44 @@
-# AGENTS.md — rift
-
-Read this before touching anything in this repo.
-
-## What rift is
+# rift
 
 A documentation drift linter. Rules in `.rift.yaml` extract strings from code and
-config (compose service names, env var names, version pins, directory names) and
-assert each one is documented. `rift check` exits 1 when it isn't.
+config (compose service names, env var names, version pins, directory names, tool
+names) and assert each one is documented, or banned, or measured. `rift check`
+exits 1 when one isn't. It is for any repo whose docs make claims about its own
+code, and for the CI job and the agent that keep those claims true.
 
-It is deliberately mechanical. It has no model of what your prose *means*; it
-answers "does this string exist in the code but not in the docs" and nothing
-else. Every proposal to make it smarter should be weighed against the thing that
-makes it useful — that its output is boring, fast, and always literally true.
+This file changes when the goals change. Nothing in it should be made false by a
+commit that adds code or content.
 
-`README.md` is the full rule reference and is the doc to update when you change
-an extractor or matcher.
+## What done means
 
-## Language policy
+- `uv run pytest -q` and `uv run rift check .` both pass. CI runs both on every
+  push and PR, and the release workflow runs them again before publishing.
+- A change to what a rule can say (a rule kind, matcher, extractor key, `expect`
+  predicate, metric or `zone` sub-key) updates `README.md`, the rule reference.
+  rift's own rules fail until it does.
+- New behaviour ships with a test you watched fail without it. `DESIGN.md` says
+  why that rule is not negotiable here.
+- English everywhere: code, comments, error strings, CLI help, commits, tests and
+  docs.
 
-**English. Everything.** Code, comments, identifiers, error strings, CLI help,
-commit messages, tests, docs, know-how. No exceptions.
+## Where everything lives
 
-## Layout
-
-```
-src/rift/extractor.py   what to pull out of the codebase
-src/rift/matcher.py     what counts as "documented" — and what is banned
-src/rift/text.py        masking, tokens, sentences, and their spans
-src/rift/measure.py     text in, numbers out
-src/rift/cli.py         check / list / stats / init + exit codes
-tests/                  one file per module
-```
-
-One concern per module, and each readable on its own. There is no line budget —
-rift grows when it earns it. What must not degrade is the property that makes it
-worth running: you can read the module behind any given rule and believe its
-output.
-
-## Public API
-
-The functions worth knowing before you change anything. Everything else in these
-modules is a private helper.
-
-**`src/rift/extractor.py` — where a set of entities comes from.**
-
-| Function | Contract |
+| What | Where |
 |---|---|
-| `extract(root, config) -> set[str]` | dispatches on the single extractor key in `config`. **Swallows every read error**, so a malformed or missing source yields the empty set — see the blind spot below. |
-| `extract_with_sites(root, config) -> [(str, Path, int)]` | the site-preserving mirror of `extract`. Yields one triple per **occurrence** (not per value), so a value repeated in one file appears twice. `list:` yields `[]` — a literal list has no source to point at, and the CLI rejects the shape. Per-file extractors (`paths`, `files`, `yaml_keys`, `yaml_values`) report line 1. `unique` is the sole consumer. |
-| `substitutions(config) -> [(Pattern, str)]` | the compiled `sub:` pairs, in the order they apply. Raises `ValueError` on a malformed shape and `re.error` on a bad pattern or replacement; the CLI calls it at validation time so a typo exits 2 before any rule runs. `extract` and `extract_with_sites` both apply it to every value. |
-| `resolve_globs(root, patterns) -> list[Path]` | one glob or a list of them, deduplicated and sorted. Every `in:`, `file:` and `files:` goes through it. |
+| What rift does for a user, every key and matcher | `README.md` |
+| How the modules divide the work, their contracts, the rules and their reasons | `DESIGN.md` |
+| One procedure per job, with its traps | `know-how/` |
+| Every mechanical check, each with its reason in a comment | `.rift.yaml`, `.github/workflows/` |
+| What changed in each release | `CHANGELOG.md` |
+| Open work and its analysis | `tasks.md`, GitHub issues |
+| Dated design specs and plans from earlier features | `docs/` |
 
-**`src/rift/matcher.py` — what counts as satisfied, banned, or unpermitted.**
-
-| Function | Contract |
-|---|---|
-| `check(root, entity, require) -> bool` | *is it anywhere?* Returns as soon as it knows. Reads the document **unmasked** — `require` asks whether something is documented, and a code fence is documentation. Takes no zone; see the README for why. |
-| `find(root, entity, forbid, spans=None) -> [(Path, int, str)]` | *where is it?* Visits every file and every occurrence, no early return. Reads **masked**. |
-| `unpermitted(root, allowed, permit, spans=None) -> [(Path, int, str)]` | *what is here that should not be?* Takes the **whole allowed set** and walks the document once — unlike the two above, which take one entity and are called once per extracted string. |
-| `duplicates(sites, scope) -> [[(str, Path, int)]]` | *what appears twice?* Consumes `extract_with_sites` output. `scope='across-files'` groups values that span more than one file; `scope='within-file'` groups values that repeat inside one file. Unknown scope raises. |
-| `contain_gaps(root, spec, spans=None) -> ([(Path, int, str)], [Path])` | *does every zone match?* Walks each zone in scope; a zone whose body does not match `spec['matches']` is an offender (path, zone-index, first-heading-line). Empty zones and `where_heading_not` hits are skipped. Files whose `zone:` resolves to nothing come back in the second list. |
-
-`spans` is a rule's resolved `zone:`, precomputed **once per file** by the caller
-and passed down. `None` means the rule has no zone; a dict means a file absent
-from it is not scanned. It is precomputed because `find` runs once per extracted
-entity, so resolving inside it would emit one unresolved-zone report per entity
-per file — 411 glossary terms over 30 chapters is 12,330 identical failures from
-one broken bound. A site counts only if **fully contained** in a span.
-
-**`src/rift/text.py` — normalisation shared by the matcher and the metrics.**
-
-| Function | Contract |
-|---|---|
-| `mask(text, include_quotes=False)` | **blanks, never deletes.** Offsets must keep indexing the original file or every reported line number is wrong. |
-| `strip_patterns(text, patterns)` | blanks caller-supplied renderer markup. Same blanking contract. |
-| `tokens` / `token_spans` | `\w+`, Unicode. `tokens` lowercases and drops offsets; `token_spans` keeps both, which is what `permit` needs. |
-| `sentences` / `sentence_spans` / `sentence_start_offsets` | crude splitting on purpose. `sentence_start_offsets` gives the first *word* offset, not the span start. |
-| `paragraphs` / `paragraph_spans` | runs of non-blank lines, block elements removed. |
-| `section_spans(text)` | the text split at every `##`, contiguous and gapless. The preamble is zone 0, emitted even when empty. |
-| `zone_spans(text, zone)` | the single place either `zone:` form is interpreted. Takes **already-masked** text. Returns `[]` for a zone this document cannot resolve — the empty list is the signal, not an exception, because the caller has to tell "no zone" from "empty selection". |
-| `line_of(text, pos)` | 1-indexed line for an offset. |
-
-`_H2` lives here rather than in `measure` because both the `sections` metric and
-`section_spans` need it, and `text` is the base of the module graph — `measure`
-imports from here, so the reverse is a circular import that fails at load.
-
-The `*_spans` functions are the primitives; the string and token versions are thin
-wrappers over them. **Change a span function and the metrics move** — the metric
-suite passing untouched is the acceptance condition for any edit here.
-
-**`src/rift/measure.py` — text in, numbers out.** Pure functions, no filesystem.
-`METRICS` maps every documented metric name to its function; `burrows_delta` is
-separate because it needs the whole file set rather than one document.
-
-**`src/rift/cli.py` — the commands and the exit codes.** `RULE_KINDS` is the
-roster of rule kinds; `_rule_kind` rejects a rule carrying more than one. Both
-`check_cmd` and `list_cmd` dispatch on kind **explicitly**, with a final `else`
-that fails loudly — see the warning below.
-
-`_kinds_or_exit` validates every rule before any of them runs, which is what its
-docstring promises and what `_validate_zone` relies on: a typo in rule twenty
-must not cost nineteen rules of work and nineteen printed results first.
-
-Two return types are pairs rather than lists, and in both cases the second half
-is the files whose zone matched nothing. `_occurrences` returns
-`(sites, unresolved)` because both callers format a site as `{path}:{line}`, so
-carrying an unresolved entry through the site tuple would mean inventing a fake
-`:0`. `_values` returns `(values, unresolved)` and its keys are `Path` when the
-spec is unzoned and `(Path, zone_index)` when it is not — `_key_path` and
-`_render_key` are the two places that difference is handled.
-
-## rift lints itself
-
-`.rift.yaml` points rift at rift: twelve rules over its own API rosters, the paths
-its docs name, and its own prose. `rift check` runs in CI beside the suite.
-
-**If you add a rule kind, a matcher, an extractor key, an `expect` predicate, a
-metric or a `zone` sub-key, a rule here fails until you document it.** That is the
-whole point — those six rosters are extracted from the code that dispatches on
-them, so the config cannot drift from the implementation without someone noticing.
-
-The zone rule uses `wrap:` rather than `as: table_cell`, and the reason
-generalises: two of the four keys are the ordinary English words *after* and
-*before*, and `index` was already satisfied by an unrelated `a/index.md` in the
-extractors table. A substring match pins the text, not the claim. When a roster's
-members are common words, require a cell of their own.
-
-Two of rift's own features are deliberately unused, and the config says why:
-`measure`/`vs-siblings` needs four files in a set and there are two know-how docs,
-and `permit` reads masked prose so it cannot see identifiers in backticks. Do not
-add either to prove a point — a config that lies is worse than a thin one.
-
-## The rule that matters most here
-
-**A linter that cannot fail is worse than no linter**, because it licenses
-shipping. Two consequences that are not negotiable in this repo:
-
-1. **Every new extractor or matcher ships with a test that fails without it.**
-   Not a test that passes — a test you have watched go red.
-2. **After changing `matcher.py`, mutation-test the suite.** Break the matcher on
-   purpose (make it `return True`) and confirm tests fail. The `heading` matcher
-   shipped in v0.1.0 completely broken — `rf'^#{1,6}'` in an f-string compiles to
-   `^#(1, 6)`, because `{1,6}` is a replacement field, not a quantifier — and no
-   test existed to notice. That bug reported every entity as undocumented, in a
-   tool whose entire job is to be believed about that.
-
-Watch for this class generally: **regex built inside f-strings**. Any `{n,m}`
-quantifier must be doubled (`{{1,6}}`), and there is nothing that will tell you
-otherwise except a test.
-
-## Testing
+## Working here
 
 ```bash
-uv run pytest -q
+uv run pytest -q                       # the suite
+uv run rift check .                    # rift lints its own docs
+grep -m1 -H '^when:' know-how/*.md     # the know-how menu
 ```
 
-Tests use a `repo` fixture (a `tmp_path` project root) and a `write` helper. Write
-real files into a real temporary tree; do not mock the filesystem — the whole
-program is filesystem behaviour, and a mocked test here would assert nothing.
-
-## Know-how
-
-- **[writing-rules](know-how/writing-rules.md)** — reach for it when authoring or
-  tuning a `.rift.yaml`: which rule shapes carry their weight, which look good and
-  produce only noise, and how to pick a matcher.
-- **[measuring-prose](know-how/measuring-prose.md)** — reach for it before pointing
-  `measure`/`expect` or `rift stats` at any body of writing. Chiefly: strip the
-  renderer's markup or you are measuring apparatus density, not prose — a silent
-  failure that promotes whichever chapter has the most glossary markers to your
-  top outlier.
-
-## Status
-
-v0.9.0. Six rule kinds: `require` (does it appear), `forbid` (where does it
-appear), `permit` (what appears that should not), `measure`/`expect` (what is
-this number), `unique` (does any value appear twice), `contain` (does every
-zone carry a required pattern). `forbid`, `permit` and `measure` take a `zone:`;
-`contain` requires one; `require` and `unique` reject it, and the README says
-why in each case. Three real consumers — `repos/ainbox/.rift.yaml` (5 rules),
-`repos/books-tsoc/.rift.yaml` (25 rules, which replaced ~450 lines of bespoke
-Python test code), and `repos/books-computist-guide/.rift.yaml` (20 rules,
-which replaced `bin/lint-partition`).
-
-CI runs the suite on push and PR (3.11, 3.13); a `v*` tag runs `release.yml`,
-which gates on the suite, checks the tag matches `pyproject.toml`, builds
-sdist+wheel and publishes with the CHANGELOG section for that version.
-
-**Releasing:** bump `pyproject.toml`, run `uv lock`, add the CHANGELOG section,
-commit, then push an annotated `vX.Y.Z` tag. Everything after the tag is
-automatic. Both workflows use `uv sync --locked`, so forgetting `uv lock` fails
-the build rather than shipping — v0.2.0 was cut by hand with the lock stale at
-`0.1.0` and nothing caught it.
-
-Not on PyPI; installed on zion as an editable uv tool (`uv tool install
---editable`). Publishing to PyPI is a deliberate open question — see `tasks.md`.
+Read the know-how doc whose `when:` matches the job before starting it.

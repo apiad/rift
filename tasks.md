@@ -19,12 +19,12 @@ error distinct from "entities missing" — a rule whose *source* is broken shoul
 fail loudly and differently from a rule whose *docs* are incomplete. Worth adding
 a matching exit code, or at minimum a red line that says `could not read X`.
 
-### 🔵 Repo is private — decide whether to publish (2026-08-10)
+### 🔵 Decide whether to publish to PyPI (2026-08-10)
 
-Created private on 2026-08-10 as the cautious default. There is nothing
-Alex-specific in it: no credentials, no domain knowledge. If it goes
-public, it wants a PyPI release too, since installing a linter from a git URL is
-most of the friction in adopting one.
+Created private on 2026-08-10 as the cautious default, and public since. Releases
+go to GitHub Releases only, so installing means pinning a git tag
+(`know-how/releasing.md`). A PyPI release would remove most of the friction in
+adopting a linter.
 
 ## Done
 
@@ -137,9 +137,9 @@ alongside `mention` rather than a flag on it, because `forbid` needs boundaries
 by default rather than by opt-in. `mention` stays permissive — existing rules
 depend on it.
 
-### ✅ Brought home from the VPS, tested and documented (2026-08-10)
+### ✅ Brought home from an agent host, tested and documented (2026-08-10)
 
-Built autonomously on the VPS on 2026-08-09 and found the next morning living on
+Built autonomously on an agent host on 2026-08-09 and found the next morning living on
 exactly one disk with no git remote at all, one commit, four `.pyc` files
 committed, no `.gitignore`, no tests and no documentation of any kind.
 
@@ -147,7 +147,7 @@ Now `apiad/rift` (private): `main`, clean ignore rules, `uv.lock` pinned, README
 with the full extractor/matcher reference, `AGENTS.md`, and
 `know-how/writing-rules.md` carrying what the AInBox pilot taught about which
 rule shapes carry their weight — those lessons had been sitting in a
-`.playground` file on the VPS that any cleanup would have deleted.
+`.playground` file on that host that any cleanup would have deleted.
 
 ### ✅ The `heading` matcher could never match a heading (2026-08-10, found by the new tests)
 
