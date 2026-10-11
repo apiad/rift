@@ -1,7 +1,8 @@
-# Writing rift rules
+---
+when: you are authoring or tuning a `.rift.yaml` for a repo, or a rule is reporting noise and you need to decide whether to narrow it or drop it.
+---
 
-**When to reach for it:** you are authoring or tuning a `.rift.yaml` for a repo,
-or a rule is reporting noise and you need to decide whether to narrow it or drop it.
+# Writing rift rules
 
 ## The bar a rule has to clear
 

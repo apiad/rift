@@ -1,8 +1,8 @@
-# Measuring prose with rift
+---
+when: you are pointing `measure` / `expect` or `rift stats` at a body of writing — a book, a docs set, a chapter directory — and want numbers you can act on rather than numbers that look meaningful.
+---
 
-**When to reach for it:** you are pointing `measure` / `expect` or `rift stats` at
-a body of writing — a book, a docs set, a chapter directory — and want numbers you
-can act on rather than numbers that look meaningful.
+# Measuring prose with rift
 
 Everything here was learned running the metrics over a real 26-chapter book
 (`repos/books-tsoc`, 2026-08-26). The traps below are not hypothetical; each one
