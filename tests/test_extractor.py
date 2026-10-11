@@ -1,4 +1,6 @@
-from rift.extractor import extract
+import pytest
+
+from rift.extractor import extract, extract_with_sites
 
 COMPOSE = """\
 services:
@@ -202,3 +204,54 @@ def test_regex_does_not_drop_matches_after_an_unmatched_branch(repo, write):
     write("src.py", 'config.get("alpha")\nif "beta" in config:\n    pass\nconfig.get("gamma")\n')
     spec = {"file": "src.py", "regex": r'(?:"([a-z_]+)" in config|config\.get\("([a-z_]+)")'}
     assert extract(repo, spec) == {"alpha", "beta", "gamma"}
+
+
+# ------------------------------------------------------------------ sub ----
+# A registry spells a name one way (`monitor.start`) and its docs another
+# (`monitor_start`). `sub:` rewrites every extracted string before matching.
+
+
+def test_sub_rewrites_a_regex_extraction(repo, write):
+    write("ops.py", '@r.op("monitor.start")\n@r.op("queue.task.status")\n')
+    got = extract(repo, {"file": "ops.py", "regex": r'op\("([\w.]+)"\)', "sub": [r"\.", "_"]})
+    assert got == {"monitor_start", "queue_task_status"}
+
+
+def test_sub_takes_a_list_of_pairs_applied_in_order(repo, write):
+    # Order is observable: the second pair only matches what the first produced.
+    got = extract(repo, {"list": ["monitor.start"], "sub": [[r"\.", "_"], ["_start$", "_begin"]]})
+    assert got == {"monitor_begin"}
+
+
+def test_sub_replacement_can_use_groups(repo, write):
+    got = extract(repo, {"list": ["monitor.start"], "sub": [r"(\w+)\.(\w+)", r"\2_\1"]})
+    assert got == {"start_monitor"}
+
+
+@pytest.mark.parametrize("config, files, expected", [
+    ({"list": ["a.b"]}, {}, {"a_b"}),
+    ({"files": "src/*.py"}, {"src/a.b.py": ""}, {"a_b"}),
+    ({"paths": "src/*.py"}, {"src/a.py": ""}, {"src_a_py"}),
+    ({"dirs_with": "Dockerfile"}, {"a.b/Dockerfile": ""}, {"a_b"}),
+    ({"file": "c.yml", "yaml_keys": "s"}, {"c.yml": "s:\n  a.b: 1\n"}, {"a_b"}),
+    ({"file": "c.yml", "yaml_values": "s"}, {"c.yml": "s:\n  - a.b\n"}, {"a_b"}),
+    ({"file": "names.txt", "lines": True}, {"names.txt": "a.b\n"}, {"a_b"}),
+    ({"file": ".env", "env_names": True}, {".env": "A_B=1\n"}, {"A_C"}),
+    ({"file": "x.txt", "regex": r"(\S+)"}, {"x.txt": "a.b\n"}, {"a_b"}),
+])
+def test_sub_applies_to_every_extractor(repo, write, config, files, expected):
+    for path, content in files.items():
+        write(path, content)
+    # paths: yields `src/a.py`, so rewrite the separator too. The second pair
+    # exists for env_names, whose values cannot contain either character.
+    assert extract(repo, {**config, "sub": [[r"[./]", "_"], ["B$", "C"]]}) == expected
+
+
+def test_sub_applies_to_extract_with_sites_and_keeps_provenance(repo, write):
+    f = write("ops.py", 'x\n@r.op("monitor.start")\n')
+    sites = extract_with_sites(repo, {"file": "ops.py", "regex": r'op\("([\w.]+)"\)', "sub": [r"\.", "_"]})
+    assert sites == [("monitor_start", f, 2)]
+
+
+def test_no_sub_leaves_values_untouched(repo, write):
+    assert extract(repo, {"list": ["monitor.start"]}) == {"monitor.start"}

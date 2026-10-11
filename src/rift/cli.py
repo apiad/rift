@@ -10,7 +10,7 @@ from rich.console import Console
 from rich.table import Table
 
 from . import measure
-from .extractor import extract, extract_with_sites
+from .extractor import extract, extract_with_sites, substitutions
 from .text import mask, strip_patterns, zone_spans
 from .matcher import check, contain_gaps, duplicates, find, resolve_globs, unpermitted
 
@@ -163,6 +163,19 @@ def _validate_zone(rule: dict, kind: str) -> None:
             )
 
 
+def _validate_extract(rule: dict) -> None:
+    """A malformed `sub:` fails here, before any rule has run."""
+    if "extract" not in rule:
+        return
+    name = rule.get("name", "<unnamed>")
+    try:
+        substitutions(rule["extract"])
+    except re.error as e:
+        raise ConfigError(f"rule {name!r}: malformed sub: pattern — {e}") from None
+    except ValueError as e:
+        raise ConfigError(f"rule {name!r}: {e}") from None
+
+
 def _kinds_or_exit(rules: list[dict]) -> list[str]:
     """Validate every rule up front, so a malformed config fails before any work."""
     try:
@@ -170,6 +183,7 @@ def _kinds_or_exit(rules: list[dict]) -> list[str]:
         for r in rules:
             kind = _rule_kind(r)
             _validate_zone(r, kind)
+            _validate_extract(r)
             kinds.append(kind)
         return kinds
     except ConfigError as e:

@@ -48,6 +48,7 @@ modules is a private helper.
 |---|---|
 | `extract(root, config) -> set[str]` | dispatches on the single extractor key in `config`. **Swallows every read error**, so a malformed or missing source yields the empty set — see the blind spot below. |
 | `extract_with_sites(root, config) -> [(str, Path, int)]` | the site-preserving mirror of `extract`. Yields one triple per **occurrence** (not per value), so a value repeated in one file appears twice. `list:` yields `[]` — a literal list has no source to point at, and the CLI rejects the shape. Per-file extractors (`paths`, `files`, `yaml_keys`, `yaml_values`) report line 1. `unique` is the sole consumer. |
+| `substitutions(config) -> [(Pattern, str)]` | the compiled `sub:` pairs, in the order they apply. Raises `ValueError` on a malformed shape and `re.error` on a bad pattern or replacement; the CLI calls it at validation time so a typo exits 2 before any rule runs. `extract` and `extract_with_sites` both apply it to every value. |
 | `resolve_globs(root, patterns) -> list[Path]` | one glob or a list of them, deduplicated and sorted. Every `in:`, `file:` and `files:` goes through it. |
 
 **`src/rift/matcher.py` — what counts as satisfied, banned, or unpermitted.**

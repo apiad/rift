@@ -52,7 +52,9 @@ rules:
 
   # Two idioms, so an alternation — and the unmatched branch's None is skipped
   # only because `regex:` takes the first group that *matched*. Before b4c9f2b
-  # this rule would have reported a silently partial roster as a pass.
+  # this rule would have reported a silently partial roster as a pass. `wrap:`
+  # rather than `as: table_cell` because `sub` already sat inside "sub-key" in
+  # another table, so a substring match passed with the row missing.
   - name: "every extractor key is documented"
     severity: error
     extract:
@@ -60,7 +62,7 @@ rules:
       regex: '(?:"([a-z_]+)" in config|config\.get\("([a-z_]+)")'
     require:
       in: "README.md"
-      as: table_cell
+      wrap: '\| `${entity}:'
 
   - name: "every expect predicate is documented"
     severity: error
